@@ -27,6 +27,14 @@ export function toLocalDateStr(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+// Shifts a "YYYY-MM-DD" string by deltaDays, parsed at local midnight so a
+// day-nav click never lands on the wrong day across a UTC boundary.
+export function shiftDateStr(dateStr, deltaDays) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + deltaDays);
+  return toLocalDateStr(d);
+}
+
 // Expands holiday brackets ({start_date, end_date, label}) into a flat
 // "YYYY-MM-DD" -> label lookup, for Calendar's getDayData to check
 // against. Inclusive on both ends.

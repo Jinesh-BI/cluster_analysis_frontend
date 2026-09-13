@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import ClusterCard from "../components/ClusterCard";
 import DelegationOverview from "../components/DelegationOverview";
-import TodayTomorrowActivities from "../components/TodayTomorrowActivities";
+// import TodayTomorrowActivities from "../components/TodayTomorrowActivities";
+import MukkadamJobsBoard from "../components/MukkadamJobsBoard";
 import { useAuth } from "../context/AuthContext";
 
 export default function ClusterListPage() {
@@ -44,7 +45,8 @@ export default function ClusterListPage() {
         </div>
       </div>
 
-      <TodayTomorrowActivities />
+      {/* <TodayTomorrowActivities /> */}
+      <MukkadamJobsBoard />
 
       {isManagerTier && oms && oms.length > 0 && (
         <select
