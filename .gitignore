@@ -2,7 +2,7 @@
 node_modules/
 
 # Build output
-dist/
+# dist/
 build/
 
 # Vite cache
@@ -12,6 +12,7 @@ build/
 .env
 .env.local
 .env.*.local
+.env.prod
 
 # Keep example environment files
 !.env.example

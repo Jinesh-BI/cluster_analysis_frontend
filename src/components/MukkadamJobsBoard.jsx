@@ -101,7 +101,7 @@ const inlineChipSx = { height: 18, fontSize: 10, fontWeight: 600, width: "fit-co
 const columns = [
   {
     field: "mukkadam_name",
-    headerName: "Mukkadam / Team",
+    headerName: "Mukkadam",
     flex: 1.2,
     minWidth: 150,
     renderCell: (params) => (
@@ -119,7 +119,7 @@ const columns = [
   },
   {
     field: "activity_name",
-    headerName: "Activity / Status",
+    headerName: "Activity • Status",
     flex: 1.2,
     minWidth: 150,
     renderCell: (params) => {
@@ -127,10 +127,12 @@ const columns = [
       const status = params.row.work_status || params.row.status;
       return (
         <Box sx={cellStackSx}>
-          <Typography sx={{ fontSize: 13 }}>{main}</Typography>
-          {sub && (
-            <Typography sx={{ fontSize: 11, color: "text.secondary" }}>{sub}</Typography>
-          )}
+          <Grid container direction="row" sx={{ gap: 0.6, alignItems: "center" }}>
+            <Typography sx={{ fontSize: 13 }}>{main}</Typography>
+            {sub && (
+              <Typography sx={{ fontSize: 11, color: "text.secondary" }}>({sub})</Typography>
+            )}
+          </Grid>
           {status && (
             <Chip
               size="small"
@@ -146,7 +148,7 @@ const columns = [
   },
   {
     field: "farmer_name",
-    headerName: "Farmer / Plot / Variety",
+    headerName: "Farmer • Plot • Variety",
     flex: 1.3,
     minWidth: 170,
     renderCell: (params) => (
@@ -161,7 +163,7 @@ const columns = [
   },
   {
     field: "actual_area_done",
-    headerName: "Acres Done / Planned",
+    headerName: "Acres Done • Planned",
     width: 150,
     renderCell: (params) => {
       const done = params.row.actual_area_done;
@@ -462,7 +464,6 @@ export default function MukkadamJobsBoard() {
               disableRowSelectionOnClick
               sx={{
                 border: "none",
-
                 "& .MuiDataGrid-columnHeader": {
                   backgroundColor: "rgb(15, 110, 86) !important",
                   color: "#ffffff",
@@ -470,7 +471,7 @@ export default function MukkadamJobsBoard() {
 
                 "& .MuiDataGrid-columnHeaderTitle": {
                   fontWeight: 700,
-                  fontSize: 11.5,
+                  fontSize: 11,
                   color: "#ffffff",
                   textTransform: "uppercase",
                   letterSpacing: "0.04em",
@@ -517,6 +518,7 @@ export default function MukkadamJobsBoard() {
 
                 "& .MuiDataGrid-cell": {
                   borderBottom: "1px solid #e0e0e0",
+                  fontSize: 8,
                 },
 
                 /* Remove focus outline */
