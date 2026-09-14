@@ -12,7 +12,7 @@
 // allocation, the auto-allocate cascade, and the "spread view" checkboxes
 // — none of those are wired to working API/UI in this codebase today.
 
-import { useEffect, useMemo, useState, useReducer } from "react";
+import { useEffect, useMemo, useRef, useState, useReducer } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client";
 import PlaygroundCalendar from "../components/PlaygroundCalendar";
@@ -206,16 +206,271 @@ function groupIdleRanges(sortedDates) {
   return ranges;
 }
 
-function PlanningActivityRow({ block, date, note }) {
+// A rich list-style picker for choosing a mukkadam. A plain <select> can
+// only show one line of text per option, which isn't enough room for a
+// name, a crew size, and a deployment-status tag — so this is a small
+// custom combobox instead: a trigger button that mirrors the chosen
+// mukkadam, and a searchable floating list of cards below it, each row
+// showing the mukkadam's name, crew size, and a "Permanent" / "Up/Down"
+// tag driven by `is_permanent`.
+function MukkadamPicker({ mukkadams, value, onChange, disabled, placeholder = "Choose a mukkadam…" }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleOutsideClick(event) {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  const list = mukkadams || [];
+  const selected = list.find((m) => String(m.mukkadam_id) === String(value));
+  const term = query.trim().toLowerCase();
+  const filtered = term ? list.filter((m) => (m.mukkadam_name || "").toLowerCase().includes(term)) : list;
+
+  function pick(mukkadam) {
+    onChange(String(mukkadam.mukkadam_id));
+    setOpen(false);
+  }
+
   return (
-    <div className="planning-activity-row">
-      <span className="planning-activity-row__mark" />
-      <span className="planning-activity-row__plot">{block.plot_id || "-"}</span>
-      <span className="planning-activity-row__name">
-        <strong>{block.activity_name || "Unnamed activity"}</strong>
-        <small>{block.farmer_name}</small>
-      </span>
-      <span className="planning-activity-row__note">{note || (date ? formatPlanDate(date) : "Not placed")}</span>
+    <div className={`mukkadam-picker ${disabled ? "mukkadam-picker--disabled" : ""}`} ref={wrapRef}>
+      <button
+        type="button"
+        className="input mukkadam-picker__trigger"
+        onClick={() => !disabled && setOpen((v) => !v)}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {selected ? (
+          <span className="mukkadam-picker__selected">
+            <strong>{selected.mukkadam_name}</strong>
+            <span className="muted">Crew of {selected.crew_size ?? "—"}</span>
+            <span className={`mukkadam-tag ${selected.is_permanent ? "mukkadam-tag--permanent" : "mukkadam-tag--updown"}`}>
+              {selected.is_permanent ? "Permanent" : "Up/Down"}
+            </span>
+          </span>
+        ) : (
+          <span className="mukkadam-picker__placeholder">{placeholder}</span>
+        )}
+        <i className="mukkadam-picker__chevron" aria-hidden="true">
+          &#9662;
+        </i>
+      </button>
+
+      {open && (
+        <div className="mukkadam-picker__panel" role="listbox" aria-label="Mukkadams">
+          <input
+            type="text"
+            className="mukkadam-picker__search"
+            placeholder="Search mukkadams…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            autoFocus
+          />
+          <div className="mukkadam-picker__list">
+            {filtered.length === 0 && <div className="mukkadam-picker__empty">No mukkadams match.</div>}
+            {filtered.map((m) => {
+              const isSelected = String(m.mukkadam_id) === String(value);
+              return (
+                <button
+                  type="button"
+                  key={m.mukkadam_id}
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`mukkadam-option ${isSelected ? "mukkadam-option--selected" : ""}`}
+                  onClick={() => pick(m)}
+                >
+                  <span className="mukkadam-option__avatar" aria-hidden="true">
+                    {(m.mukkadam_name || "?").trim().charAt(0).toUpperCase()}
+                  </span>
+                  <span className="mukkadam-option__main">
+                    <strong>{m.mukkadam_name}</strong>
+                    <small>Crew of {m.crew_size ?? "—"}</small>
+                  </span>
+                  <span className={`mukkadam-tag ${m.is_permanent ? "mukkadam-tag--permanent" : "mukkadam-tag--updown"}`}>
+                    {m.is_permanent ? "Permanent" : "Up/Down"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Clicking the row opens an inline "allocate a mukkadam to this piece"
+// panel: pick how much of it (25/50/75/100%) and who's doing it. Percent
+// + mukkadam is all the form collects — cluster_id and activity_id are
+// already known, and this row's `date` IS the piece_date (rows here only
+// ever come from placementsByDate[selectedDate]).
+//
+// Who's already allocated comes from the page's `dayAllocations` (fetched
+// from the calendar-day endpoint — the only place allocations are
+// readable), keyed to this exact day, so re-opening a row later shows the
+// real state, not just what was added this session. It's deliberately
+// orthogonal to the plan/schedule state: allocating or unassigning never
+// touches `plan`, `hasUnsavedChanges`, save, or publish.
+function PlanningActivityRow({
+  block,
+  date,
+  note,
+  deployedMukkadams,
+  onAllocateMukkadam,
+  onUnassignMukkadam,
+  dayAllocations,
+  dayAllocationsLoading,
+  disabledReason,
+}) {
+  const [open, setOpen] = useState(false);
+  const [pickedMukkadamId, setPickedMukkadamId] = useState("");
+  const [pickedPercent, setPickedPercent] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [removingId, setRemovingId] = useState(null);
+  const [formError, setFormError] = useState(null);
+
+  const hasFreshData = Boolean(dayAllocations && dayAllocations.day === date);
+  const existingAllocations = hasFreshData ? dayAllocations.byActivity[block.activity_id] || [] : [];
+  const allocatedPercent = existingAllocations.reduce((sum, a) => sum + (a.percent || 0), 0);
+  const remainingPercent = Math.max(0, 100 - allocatedPercent);
+  const percentOptions = [25, 50, 75, 100].filter((p) => p <= remainingPercent);
+  const alreadyAllocatedIds = new Set(existingAllocations.map((a) => String(a.mukkadam_id)));
+  const availableMukkadams = (deployedMukkadams || []).filter((m) => !alreadyAllocatedIds.has(String(m.mukkadam_id)));
+
+  async function handleAllocate() {
+    const mukkadam = availableMukkadams.find((m) => String(m.mukkadam_id) === pickedMukkadamId);
+    const percent = pickedPercent || percentOptions[percentOptions.length - 1];
+    if (!mukkadam || !percent || !date || !onAllocateMukkadam) return;
+    setSaving(true);
+    setFormError(null);
+    const result = await onAllocateMukkadam(block.activity_id, date, mukkadam, percent);
+    setSaving(false);
+    if (result?.ok) {
+      setPickedMukkadamId("");
+      setPickedPercent(null);
+    } else {
+      setFormError(result?.error || "Could not allocate this mukkadam.");
+    }
+  }
+
+  async function handleUnassign(allocationId) {
+    if (!onUnassignMukkadam) return;
+    setRemovingId(allocationId);
+    setFormError(null);
+    const result = await onUnassignMukkadam(date, allocationId);
+    setRemovingId(null);
+    if (!result?.ok) {
+      setFormError(result?.error || "Could not remove this allocation.");
+    }
+  }
+
+  return (
+    <div className="planning-activity-row-wrap">
+      <div
+        className="planning-activity-row planning-activity-row--clickable"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+      >
+        <span className="planning-activity-row__mark" />
+        <span className="planning-activity-row__plot">{block.plot_id || "-"}</span>
+        <span className="planning-activity-row__name">
+          <strong>{block.activity_name || "Unnamed activity"}</strong>
+          <small>{block.farmer_name}</small>
+        </span>
+        <span className="planning-activity-row__note">{note || (date ? formatPlanDate(date) : "Not placed")}</span>
+      </div>
+
+      {open && (
+        <div className="mukkadam-allocate-panel" onClick={(event) => event.stopPropagation()}>
+          {dayAllocationsLoading && !hasFreshData && (
+            <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              Checking current allocations…
+            </p>
+          )}
+
+          {existingAllocations.length > 0 && (
+            <div className="mukkadam-chips">
+              {existingAllocations.map((a) => (
+                <span className="mukkadam-chip" key={a.allocation_id}>
+                  {a.mukkadam_name || a.mukkadam_id} &bull; {a.percent}%
+                  {onUnassignMukkadam && (
+                    <button
+                      type="button"
+                      className="mukkadam-chip__remove"
+                      onClick={() => handleUnassign(a.allocation_id)}
+                      disabled={removingId === a.allocation_id}
+                      title="Remove this mukkadam"
+                      aria-label={`Remove ${a.mukkadam_name || "this mukkadam"}`}
+                    >
+                      {removingId === a.allocation_id ? "…" : "×"}
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {!date ? (
+            <p className="muted" style={{ margin: 0 }}>
+              This activity isn't placed on a day yet.
+            </p>
+          ) : disabledReason ? (
+            <p className="muted" style={{ margin: 0 }}>
+              {disabledReason}
+            </p>
+          ) : remainingPercent <= 0 ? (
+            <span className="muted">Fully allocated</span>
+          ) : (
+            <div className="mukkadam-add-row">
+              <MukkadamPicker
+                mukkadams={availableMukkadams}
+                value={pickedMukkadamId}
+                onChange={setPickedMukkadamId}
+              />
+              <select
+                className="input piece-row__select"
+                value={pickedPercent || percentOptions[percentOptions.length - 1]}
+                onChange={(event) => setPickedPercent(Number(event.target.value))}
+                aria-label="Percent of this activity"
+              >
+                {percentOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p}%
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="btn btn-primary" onClick={handleAllocate} disabled={!pickedMukkadamId || saving}>
+                {saving ? "Allocating…" : "Allocate"}
+              </button>
+            </div>
+          )}
+
+          {formError && (
+            <p className="error-text" style={{ margin: 0 }}>
+              {formError}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -686,6 +941,12 @@ function PlanningWorkbench({
   onPieceAction,
   onResetPlot,
   onUnscheduleAll,
+  deployedMukkadams,
+  onAllocateMukkadam,
+  onUnassignMukkadam,
+  dayAllocations,
+  dayAllocationsLoading,
+  hasUnsavedChanges,
 }) {
   const [planMode, setPlanMode] = useState("new");
   const [activitySearch, setActivitySearch] = useState("");
@@ -959,6 +1220,16 @@ function PlanningWorkbench({
                     block={block}
                     date={effectiveDate(block)}
                     note={diffDays(block.date, effectiveDate(block)) > 0 ? "pushed later" : undefined}
+                    deployedMukkadams={deployedMukkadams}
+                    onAllocateMukkadam={onAllocateMukkadam}
+                    onUnassignMukkadam={onUnassignMukkadam}
+                    dayAllocations={dayAllocations}
+                    dayAllocationsLoading={dayAllocationsLoading}
+                    disabledReason={
+                      hasUnsavedChanges
+                        ? "Save your plan before allocating mukkadams — this piece isn't scheduled on the backend yet."
+                        : undefined
+                    }
                   />
                 ))
               ) : (
@@ -1046,6 +1317,15 @@ export default function ClusterPlaygroundPageV2() {
   const [scheduleInfo, setScheduleInfo] = useState(undefined);
   const [vaultByFarmer, setVaultByFarmer] = useState({});
   const [holidays, setHolidays] = useState(null);
+  const [deployedMukkadams, setDeployedMukkadams] = useState([]);
+  // Read-side of mukkadam allocation: who's already assigned on the
+  // currently-selected day, keyed by activity_id — sourced from the
+  // calendar-day endpoint (the only place allocations are readable) so a
+  // reopened row shows the real, persisted state rather than a per-session
+  // guess. `day` guards against showing stale data for a different day
+  // while the next fetch is still in flight.
+  const [dayAllocations, setDayAllocations] = useState({ day: null, byActivity: {} });
+  const [dayAllocationsLoading, setDayAllocationsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [publishing, setPublishing] = useState(false);
@@ -1068,6 +1348,12 @@ export default function ClusterPlaygroundPageV2() {
     api.getCluster(id).then(setCluster).catch((e) => setError(e.message));
     api.getCalendar(id).then(setReferenceCalendar).catch((e) => setError(e.message));
     api.getClusterHolidays(id).then(setHolidays).catch((e) => setError(e.message));
+    // Supplementary picker data for mukkadam allocation — swallow errors
+    // (including the documented 502 "tender unreachable" shape) rather
+    // than routing through setError, since it's not core page function.
+    api.getDeployedMukkadams()
+      .then((r) => setDeployedMukkadams(r.results || []))
+      .catch(() => setDeployedMukkadams([]));
 
     Promise.all([
       api.getClusterPlayground(id),
@@ -1231,6 +1517,33 @@ export default function ClusterPlaygroundPageV2() {
     setSelectedDay(date);
   }
 
+  // Reads current mukkadam allocations for the selected day off the
+  // calendar-day endpoint, so the "who's already on this piece" chips
+  // reflect the real backend state (including allocations made by anyone
+  // else), not just what this browser tab added. Re-run after every
+  // allocate/unassign so the chips stay in sync with what actually saved.
+  async function loadDayAllocations(day) {
+    if (!day) return;
+    setDayAllocationsLoading(true);
+    try {
+      const dayData = await api.getCalendarDay(id, day);
+      const byActivity = {};
+      for (const entry of dayData || []) {
+        if (entry.activity_id != null) byActivity[entry.activity_id] = entry.mukkadams || [];
+      }
+      setDayAllocations({ day, byActivity });
+    } catch (e) {
+      setDayAllocations({ day, byActivity: {} });
+    } finally {
+      setDayAllocationsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDayAllocations(selectedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, selectedDate]);
+
   function handleMoveBlockToDate(activityId, targetDate) {
     const block = plan[activityId];
     if (!block || (block.completed && !isAdmin)) return;
@@ -1310,6 +1623,38 @@ export default function ClusterPlaygroundPageV2() {
       setSaveError(e.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Allocates a mukkadam to one date-piece of an activity. Orthogonal to
+  // the plan/schedule state — it never touches `plan`, `hasUnsavedChanges`,
+  // save, or publish, and its result is only used by the calling row to
+  // show a chip / cap its own remaining percent for this session.
+  async function handleAllocateMukkadam(activityId, pieceDate, mukkadam, percent) {
+    try {
+      const allocation = await api.allocateMukkadam(id, {
+        activity_id: activityId,
+        piece_date: pieceDate,
+        mukkadam_id: mukkadam.mukkadam_id,
+        mukkadam_name: mukkadam.mukkadam_name,
+        percent,
+      });
+      await loadDayAllocations(pieceDate);
+      return { ok: true, allocation };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  // Soft-removes an allocation (backend deactivates it, never deletes it)
+  // and refreshes the day's allocations so the chip disappears immediately.
+  async function handleUnassignMukkadam(pieceDate, allocationId) {
+    try {
+      await api.unassignMukkadam(id, allocationId);
+      await loadDayAllocations(pieceDate);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
     }
   }
 
@@ -1467,6 +1812,12 @@ export default function ClusterPlaygroundPageV2() {
         onPieceAction={handlePieceAction}
         onResetPlot={handleResetPlot}
         onUnscheduleAll={handleUnscheduleAll}
+        deployedMukkadams={deployedMukkadams}
+        onAllocateMukkadam={handleAllocateMukkadam}
+        onUnassignMukkadam={handleUnassignMukkadam}
+        dayAllocations={dayAllocations}
+        dayAllocationsLoading={dayAllocationsLoading}
+        hasUnsavedChanges={hasUnsavedChanges}
       />
     </div>
   );
