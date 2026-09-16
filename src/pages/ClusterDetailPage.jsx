@@ -39,7 +39,7 @@ export default function ClusterDetailPage() {
   const [showHolidayForm, setShowHolidayForm] = useState(false);
   const [error, setError] = useState(null);
   const [coverageByFarmer, setCoverageByFarmer] = useState({});
-
+  console.log("coverageByFarmer")
   useEffect(() => {
     setCluster(null);
     setCalendar(null);
