@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client";
+import { opsApi } from "../api/opsClient";
 import Calendar from "../components/Calendar";
 import ClusterActivityToday from "../components/ClusterActivityToday";
 import DayDetailPanel from "../components/DayDetailPanel";
@@ -37,6 +38,7 @@ export default function ClusterDetailPage() {
   const [savingHoliday, setSavingHoliday] = useState(false);
   const [showHolidayForm, setShowHolidayForm] = useState(false);
   const [error, setError] = useState(null);
+  const [coverageByFarmer, setCoverageByFarmer] = useState({});
 
   useEffect(() => {
     setCluster(null);
@@ -71,6 +73,45 @@ export default function ClusterDetailPage() {
       .then(setDayActivities)
       .catch((e) => setError(e.message));
   }, [id, selectedDay]);
+
+  // Payment-coverage check is per-farmer only (no bulk endpoint), so this
+  // fans out one request per farmer as soon as the cluster loads. Each
+  // farmer's outcome is handled independently — one failure never blocks
+  // the others or trips the page-level error state.
+  useEffect(() => {
+    setCoverageByFarmer({});
+    if (!cluster?.farmers?.length) return;
+    cluster.farmers.forEach((f) => {
+      opsApi
+        .getFarmerActivityCoverage(f.farmer_id)
+        .then((data) =>
+          setCoverageByFarmer((prev) => ({ ...prev, [f.farmer_id]: { status: "ok", data } }))
+        )
+        .catch((e) =>
+          setCoverageByFarmer((prev) => ({
+            ...prev,
+            [f.farmer_id]: { status: e.status === 404 ? "no-booking" : "error", message: e.message },
+          }))
+        );
+    });
+  }, [id, cluster?.farmer_count]);
+
+  const coverageStats = useMemo(() => {
+    const entries = Object.values(coverageByFarmer);
+    const ok = entries.filter((e) => e.status === "ok");
+    const atRisk = ok.filter((e) => e.data.has_shortage);
+    const uncoveredActivities = atRisk.reduce(
+      (sum, e) => sum + (e.data.upcoming_activities_total - e.data.activities_covered),
+      0
+    );
+    return {
+      checked: entries.length,
+      total: cluster?.farmers?.length || 0,
+      atRisk: atRisk.length,
+      fullyFunded: ok.length - atRisk.length,
+      uncoveredActivities,
+    };
+  }, [coverageByFarmer, cluster?.farmers?.length]);
 
   const calendarDayMap = useMemo(() => {
     const map = {};
@@ -256,6 +297,43 @@ export default function ClusterDetailPage() {
         <p className="muted">Nothing coming up.</p>
       )}
 
+      <div className="info-card" style={{ marginTop: 20 }}>
+        <div className="info-card__title-row">
+          <div className="info-card__title">Payment coverage</div>
+          {coverageStats.checked > 0 &&
+            (coverageStats.atRisk > 0 ? (
+              <span className="status-pill status-pill--overdue">⚠ {coverageStats.atRisk} at risk</span>
+            ) : (
+              <span className="status-pill status-pill--paid">✓ All funded</span>
+            ))}
+        </div>
+        <p className="muted" style={{ marginTop: -4, marginBottom: 10 }}>
+          Which farmers' vault balances can cover their upcoming September activities.
+        </p>
+        <div className="coverage-stat-row">
+          <div className={`stat-box ${coverageStats.atRisk > 0 ? "stat-box--urgent" : "stat-box--healthy"}`}>
+            <div className="stat-box__value">{coverageStats.atRisk}</div>
+            <div className="stat-box__label">Farmers at risk</div>
+          </div>
+          <div className="stat-box stat-box--healthy">
+            <div className="stat-box__value">{coverageStats.fullyFunded}</div>
+            <div className="stat-box__label">Fully funded</div>
+          </div>
+          <div className="stat-box stat-box--urgent">
+            <div className="stat-box__value">{coverageStats.uncoveredActivities}</div>
+            <div className="stat-box__label">Activities to hold off</div>
+          </div>
+          {coverageStats.checked < coverageStats.total && (
+            <div className="stat-box stat-box--neutral">
+              <div className="stat-box__value">
+                {coverageStats.checked}/{coverageStats.total}
+              </div>
+              <div className="stat-box__label">Checked so far</div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <h3 style={{ marginTop: 8 }}>Cash flow</h3>
       <p className="muted">Money in from farmers, next to money out to the mukkadam.</p>
       <div className="cash-flow-row">
@@ -345,7 +423,7 @@ export default function ClusterDetailPage() {
       <p className="muted">Tap a farmer to see their payment activity.</p>
       <ul className="farmer-list">
         {visibleFarmers.map((f) => (
-          <FarmerRow key={f.farmer_id} clusterId={id} farmer={f} />
+          <FarmerRow key={f.farmer_id} clusterId={id} farmer={f} coverage={coverageByFarmer[f.farmer_id]} />
         ))}
       </ul>
       {cluster.farmers.length > 6 && (

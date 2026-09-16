@@ -3,7 +3,19 @@ import { useState } from "react";
 import { api } from "../api/client";
 import { formatCurrency } from "../utils/format";
 
-export default function FarmerRow({ clusterId, farmer }) {
+function coveragePill(coverage) {
+  if (!coverage || coverage.status !== "ok") return null;
+  const { has_shortage, activities_covered, upcoming_activities_total } = coverage.data;
+  if (!has_shortage) return <span className="status-pill status-pill--paid">✓ Funded</span>;
+  const cls = activities_covered === 0 ? "status-pill--overdue" : "status-pill--pending";
+  return (
+    <span className={`status-pill ${cls}`}>
+      ⚠ {activities_covered}/{upcoming_activities_total} covered
+    </span>
+  );
+}
+
+export default function FarmerRow({ clusterId, farmer, coverage }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [activities, setActivities] = useState(null);
@@ -51,11 +63,52 @@ export default function FarmerRow({ clusterId, farmer }) {
             {farmer.activity_count} {farmer.activity_count === 1 ? "activity" : "activities"}
           </span>
         </span>
-        <span className="farmer-row__caret">{open ? "\u25B2" : "\u25BC"}</span>
+        <span className="farmer-row__metrics">
+          {coveragePill(coverage)}
+          <span className="farmer-row__caret">{open ? "\u25B2" : "\u25BC"}</span>
+        </span>
       </button>
 
       {open && (
         <div className="farmer-row__detail">
+          {coverage?.status === "ok" && (
+            <div className="coverage-block">
+              <div className="muted">
+                Vault balance {formatCurrency(coverage.data.vault_balance)} — covers{" "}
+                {coverage.data.activities_covered}/{coverage.data.upcoming_activities_total} upcoming activities
+                {coverage.data.has_shortage && (
+                  <span style={{ color: "var(--color-fail)" }}> — hold off on the activities marked below</span>
+                )}
+              </div>
+              <div className="checklist">
+                {coverage.data.activities.map((a) => (
+                  <div
+                    className="checklist-row"
+                    key={a.activity_id}
+                    title={
+                      a.covered
+                        ? "Vault balance covers this"
+                        : "Vault balance runs out before this activity — consider not scheduling yet"
+                    }
+                  >
+                    <span className={`checklist-dot ${a.covered ? "checklist-dot--pass" : "checklist-dot--fail"}`} />
+                    <span>
+                      {a.activity_name} — {formatCurrency(a.cost)}{" "}
+                      {a.date_time ? `(${a.date_time.slice(0, 10)})` : "(unscheduled)"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {coverage?.status === "no-booking" && (
+            <p className="muted">No active September booking — payment coverage check not applicable.</p>
+          )}
+          {coverage?.status === "error" && (
+            <p className="error-text">Coverage check failed: {coverage.message}</p>
+          )}
+          {coverage === undefined && <p className="muted">Checking payment coverage…</p>}
+
           {loading && <p className="muted">Loading payment activity…</p>}
           {error && <p className="error-text">{error}</p>}
 
