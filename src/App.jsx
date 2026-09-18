@@ -2,11 +2,15 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import AppLayout from "./layouts/AppLayout";
 import LoginPage from "./pages/LoginPage";
-import ClusterListPage from "./pages/ClusterListPage";
+import OverviewPage from "./pages/OverviewPage";
 import ClusterDetailPage from "./pages/ClusterDetailPage";
 import ClusterPlaygroundPage from "./pages/ClusterPlaygroundPage";
 import ManagersPage from "./pages/ManagersPage";
+import MukkadamsListPage from "./pages/mukkadams/MukkadamsListPage";
+import MukkadamDetailPage from "./pages/mukkadams/MukkadamDetailPage";
+import PaymentsPage from "./pages/PaymentsPage";
 import BugReportWidget from "./components/BugReportWidget";
 import "./styles.css";
 
@@ -27,14 +31,28 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+
           <Route
-            path="/"
             element={
               <ProtectedRoute>
-                <ClusterListPage />
+                <AppLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/mukkadams" element={<MukkadamsListPage />} />
+            <Route path="/mukkadams/:id" element={<MukkadamDetailPage />} />
+            <Route path="/payments" element={<PaymentsPage />} />
+            <Route
+              path="/managers"
+              element={
+                <ProtectedRoute requireManagerTier>
+                  <ManagersPage />
+                </ProtectedRoute>
+              }
+            />
+          </Route>
+
           <Route
             path="/clusters/:id"
             element={
@@ -48,14 +66,6 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ClusterPlaygroundPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/managers"
-            element={
-              <ProtectedRoute requireManagerTier>
-                <ManagersPage />
               </ProtectedRoute>
             }
           />

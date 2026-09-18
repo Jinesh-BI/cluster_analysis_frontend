@@ -1,19 +1,19 @@
-// src/pages/ClusterListPage.jsx
+// src/pages/OverviewPage.jsx
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import ClusterCard from "../components/ClusterCard";
 import DelegationOverview from "../components/DelegationOverview";
 // import TodayTomorrowActivities from "../components/TodayTomorrowActivities";
 import MukkadamJobsBoard from "../components/MukkadamJobsBoard";
+import MukkadamStatsTiles from "../components/mukkadams/MukkadamStatsTiles";
 import { useAuth } from "../context/AuthContext";
 
-export default function ClusterListPage() {
+export default function OverviewPage() {
   const [clusters, setClusters] = useState(null);
   const [error, setError] = useState(null);
   const [oms, setOms] = useState(null);
   const [omFilter, setOmFilter] = useState("");
-  const { user, isManagerTier, logout } = useAuth();
+  const { user, isManagerTier } = useAuth();
 
   // Only Admin/AM get the "filter by OM" dropdown — an OM already only
   // ever sees their own clusters, so there's nothing for them to narrow.
@@ -31,19 +31,7 @@ export default function ClusterListPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1>Clusters</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          {isManagerTier && (
-            <Link to="/managers" className="btn">
-              Managers
-            </Link>
-          )}
-          <button className="btn" onClick={logout}>
-            Log out
-          </button>
-        </div>
-      </div>
+      <MukkadamStatsTiles />
 
       {/* <TodayTomorrowActivities /> */}
       <MukkadamJobsBoard />

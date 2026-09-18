@@ -3,7 +3,7 @@
 // Regional-Manager-only. Shows how much of what Admin gave them has
 // been further delegated to an Assistant Regional Manager, and to whom
 // — the "am I keeping my team's workload visible and balanced" check.
-// Renders nothing for anyone else; ClusterListPage only mounts this
+// Renders nothing for anyone else; OverviewPage only mounts this
 // when user.role === "REGIONAL_MANAGER" anyway, but the guard here is
 // cheap insurance against it being reused somewhere that check slips.
 
