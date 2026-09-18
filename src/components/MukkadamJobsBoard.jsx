@@ -13,12 +13,10 @@ import {
   Box,
   Button,
   Chip,
-  createTheme,
   IconButton,
   InputAdornment,
   Stack,
   TextField,
-  ThemeProvider,
   Tooltip,
   Typography,
   Grid,
@@ -39,15 +37,10 @@ const STATUS_TONE = {
   work_not_started: "error"
 };
 
-// Brand green (matches the grid's header banner below) as its own themed
-// color slot — the Today/Tomorrow toggle uses this instead of MUI's
-// default blue "primary" so it reads as this app's own accent, not a
-// generic MUI one.
-const theme = createTheme({
-  palette: {
-    secondary: { main: "#0f6e56", dark: "#0a4d3c", contrastText: "#ffffff" },
-  },
-});
+// The Today/Tomorrow toggle below uses color="secondary", which the
+// app-wide theme (src/theme/index.js) maps to this same brand green
+// (#0f6e56) that the grid's header banner uses as a hardcoded literal —
+// so both stay visually in sync without a local theme here.
 
 // Activity names arrive as "Pruning (छाटणी)" — split the parenthetical
 // local-language label onto its own line rather than showing one long
@@ -343,7 +336,7 @@ export default function MukkadamJobsBoard() {
   const isTomorrow = dateStr === localDateStr(1);
 
   return (
-    <ThemeProvider theme={theme}>
+    <>
       <Box className="info-card">
         <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.25 }}>
           Job Activities
@@ -536,6 +529,6 @@ export default function MukkadamJobsBoard() {
       </Box>
 
       <MukkadamJobImagesDialog open={Boolean(imagesRow)} row={imagesRow} onClose={() => setImagesRow(null)} />
-    </ThemeProvider>
+    </>
   );
 }

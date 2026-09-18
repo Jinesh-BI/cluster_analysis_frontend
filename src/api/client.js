@@ -37,7 +37,7 @@ export const api = {
     }),
 
   // omId narrows the list to clusters delegated to that one OM —
-  // Admin/AM only, see the dropdown on ClusterListPage. Omit for the
+  // Admin/AM only, see the dropdown on OverviewPage. Omit for the
   // normal "everything I can see" list.
   getClusters: (omId) =>
     request(omId ? `/clusters/?om_id=${omId}` : "/clusters/"),
