@@ -157,7 +157,7 @@ export default function AppLayout() {
 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar />
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ py:0, px:0 }}>
           <Outlet />
         </Box>
       </Box>
