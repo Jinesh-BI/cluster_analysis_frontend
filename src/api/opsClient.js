@@ -40,4 +40,13 @@ export const opsApi = {
   getFarmerActivityCoverage: (farmerId) =>
     request(`/payment-schedule/coverage/${farmerId}/`),
 
+  // Bypasses a ledger entry's normal 24h maturity window and releases it
+  // immediately — a real mutation (unlike the read-only mukkadam
+  // integration API), so it requires a reason for the audit trail.
+  // payload: { mukkadam_id, ledger_id, reason }
+  releaseLedgerEntryEarly: (payload) =>
+    request(`/plot-analysis/tender/release-ledger-entry-early/`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };

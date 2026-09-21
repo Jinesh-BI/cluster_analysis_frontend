@@ -3,13 +3,19 @@
 // Maturing tab — payment-overview.maturity.pending[], the not-yet-liquid
 // earnings (still inside their 24h maturity window, or manually held with
 // no ETA). "Matures in" is a live countdown recomputed from matures_at,
-// not a static echo of the API's seconds_until_mature.
+// not a static echo of the API's seconds_until_mature. These pending
+// entries are the same underlying MukkadamLedger rows LedgerTable shows in
+// "maturing"/"held" state, so can_release_early is actionable here too —
+// see ReleaseEarlyModal. Of the three possible actions, only
+// can_release_early gets a CTA — can_hold/can_release have no endpoint yet.
 import { useMemo, useState } from "react";
 import { Box, Chip, MenuItem, Select, Stack, Tooltip, Typography } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { formatCurrency } from "../../utils/format";
 import { useCountdown } from "../../hooks/useCountdown";
-import { ALL, ActionBadges, TABLE_BOX_SX, TABLE_GRID_SX, titleCase, useDistinctValues } from "./tableUtils";
+import { useAuth } from "../../context/AuthContext";
+import { ALL, ReleaseEarlyAction, TABLE_BOX_SX, TABLE_GRID_SX, titleCase, useDistinctValues } from "./tableUtils";
+import ReleaseEarlyModal from "./ReleaseEarlyModal";
 
 const STATUS_COLOR = { maturing: "warning", held: "error" };
 
@@ -54,17 +60,13 @@ const columns = [
     sortable: false,
     renderCell: (params) => <MaturesInCell row={params.row} />,
   },
-  {
-    field: "actions",
-    headerName: "Valid ops actions",
-    width: 140,
-    sortable: false,
-    renderCell: (params) => <ActionBadges actions={params.value} />,
-  },
 ];
 
-export default function MaturingTable({ pending, loading }) {
+export default function MaturingTable({ pending, loading, mukkadamId, onReleased }) {
+  const { user } = useAuth();
+  const canReleaseEarly = user?.role === "REGIONAL_MANAGER" || user?.role === "ADMIN";
   const [statusFilter, setStatusFilter] = useState(ALL);
+  const [releaseTarget, setReleaseTarget] = useState(null); // the pending entry being released, or null
 
   const rows = pending ?? [];
   const statusOptions = useDistinctValues(rows, "status");
@@ -72,6 +74,25 @@ export default function MaturingTable({ pending, loading }) {
   const filteredRows = useMemo(
     () => rows.filter((r) => statusFilter === ALL || r.status === statusFilter),
     [rows, statusFilter],
+  );
+
+  const columnsWithActions = useMemo(
+    () => [
+      ...columns,
+      {
+        field: "actions",
+        headerName: "Valid ops actions",
+        width: 160,
+        sortable: false,
+        renderCell: (params) => (
+          <ReleaseEarlyAction
+            actions={params.value}
+            onClick={canReleaseEarly ? () => setReleaseTarget(params.row) : undefined}
+          />
+        ),
+      },
+    ],
+    [canReleaseEarly],
   );
 
   return (
@@ -94,7 +115,7 @@ export default function MaturingTable({ pending, loading }) {
         <DataGrid
           autoHeight
           rows={filteredRows}
-          columns={columns}
+          columns={columnsWithActions}
           loading={loading}
           getRowId={(row) => row.id}
           disableRowSelectionOnClick
@@ -103,6 +124,18 @@ export default function MaturingTable({ pending, loading }) {
           sx={TABLE_GRID_SX}
         />
       </Box>
+
+      <ReleaseEarlyModal
+        open={Boolean(releaseTarget)}
+        mukkadamId={mukkadamId}
+        ledgerId={releaseTarget?.id}
+        amount={releaseTarget?.amount}
+        onClose={() => setReleaseTarget(null)}
+        onReleased={() => {
+          setReleaseTarget(null);
+          onReleased?.();
+        }}
+      />
     </Box>
   );
 }

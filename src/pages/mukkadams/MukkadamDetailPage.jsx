@@ -324,8 +324,12 @@ export default function MukkadamDetailPage() {
         <Box>
           {activeTab === "allocations" && <AllocationsTable mukkadamId={id} />}
           {activeTab === "payments" && <PaymentsTable payments={overview?.payments} loading={loading} />}
-          {activeTab === "maturing" && <MaturingTable pending={maturity?.pending} loading={loading} />}
-          {activeTab === "ledger" && <LedgerTable ledger={overview?.ledger} loading={loading} />}
+          {activeTab === "maturing" && (
+            <MaturingTable pending={maturity?.pending} loading={loading} mukkadamId={id} onReleased={load} />
+          )}
+          {activeTab === "ledger" && (
+            <LedgerTable ledger={overview?.ledger} loading={loading} mukkadamId={id} onReleased={load} />
+          )}
         </Box>
       </Fade>
     </Box>
