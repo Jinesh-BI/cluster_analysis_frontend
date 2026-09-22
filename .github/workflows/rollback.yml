@@ -1,0 +1,94 @@
+name: Rollback Production
+
+# Manual escape hatch: instantly point the server's `current` symlink at an
+# older, already-built release (kept by deploy.yml) without doing a fresh
+# git pull / npm ci / build. Use when a deploy passed its health check but a
+# regression only shows up afterwards.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: >-
+          Release timestamp to roll back to (folder name under
+          /var/www/cluster_analysis_frontend/releases, e.g. 20260921143000).
+          Leave empty to roll back to the release just before the current one.
+        required: false
+        default: ''
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Rollback to a previous release
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+
+    steps:
+      - name: Rollback over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          command_timeout: 10m
+          script_stop: true
+          envs: TARGET_RELEASE
+          script: |
+            set -Eeuo pipefail
+
+            BASE_DIR="/var/www/cluster_analysis_frontend"
+            RELEASES_DIR="$BASE_DIR/releases"
+            CURRENT_LINK="$BASE_DIR/current"
+            HEALTH_URL="https://am.phala.work/"
+            LOCK_FILE="/tmp/cluster_analysis_frontend.deploy.lock"
+
+            log()  { echo "[rollback] $(date '+%Y-%m-%d %H:%M:%S') - $*"; }
+            fail() { echo "[rollback] ERROR: $*" >&2; exit 1; }
+
+            exec 9>"$LOCK_FILE"
+            if ! flock -n 9; then
+              fail "A deploy or rollback is already running on this server. Aborting."
+            fi
+
+            CURRENT_TARGET=""
+            [ -L "$CURRENT_LINK" ] && CURRENT_TARGET="$(readlink -f "$CURRENT_LINK")"
+
+            if [ -n "${TARGET_RELEASE:-}" ]; then
+              ROLLBACK_TARGET="$RELEASES_DIR/$TARGET_RELEASE"
+              [ -d "$ROLLBACK_TARGET" ] || fail "Release '$TARGET_RELEASE' not found under $RELEASES_DIR"
+            else
+              ROLLBACK_TARGET="$(ls -1dt "$RELEASES_DIR"/*/ 2>/dev/null | grep -vF "${CURRENT_TARGET}/" | head -n1 | sed 's:/$::')"
+              [ -n "$ROLLBACK_TARGET" ] || fail "No older release available to roll back to"
+            fi
+
+            if [ "$ROLLBACK_TARGET" = "$CURRENT_TARGET" ]; then
+              fail "Requested release is already the one currently live — nothing to do"
+            fi
+            [ -f "$ROLLBACK_TARGET/index.html" ] || fail "Target release looks incomplete (no index.html) — refusing to roll back to it"
+
+            log "Rolling back current: $CURRENT_TARGET -> $ROLLBACK_TARGET"
+            ln -sfn "$ROLLBACK_TARGET" "$CURRENT_LINK.tmp"
+            mv -Tf "$CURRENT_LINK.tmp" "$CURRENT_LINK"
+
+            sudo nginx -t || fail "nginx -t failed after rollback swap — check server manually, site may be degraded"
+            sudo systemctl reload nginx || fail "nginx reload failed after rollback swap"
+
+            ATTEMPT=0
+            until curl -kfsS -o /dev/null --max-time 5 --resolve am.phala.work:443:127.0.0.1 "$HEALTH_URL"; do
+              ATTEMPT=$((ATTEMPT + 1))
+              if [ "$ATTEMPT" -ge 5 ]; then
+                fail "Health check failed after rollback — investigate manually, do not assume traffic is healthy"
+              fi
+              sleep 2
+            done
+
+            log "Rollback complete. Live at $CURRENT_LINK -> $ROLLBACK_TARGET"
+        env:
+          TARGET_RELEASE: ${{ inputs.release }}
