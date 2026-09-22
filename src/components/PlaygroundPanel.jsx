@@ -52,7 +52,7 @@ export default function PlaygroundPanel({
         {distinctPlotIds.length > 1 && (
           <div className="activity-item">
             <div className="muted" style={{ marginBottom: 6 }}>
-              Show each plot's full spread on the calendar (which other days it's scheduled on):
+              Show each plot&apos;s full spread on the calendar (which other days it&apos;s scheduled on):
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
               {distinctPlotIds.map((plotId) => {
@@ -172,7 +172,7 @@ export default function PlaygroundPanel({
       )}
 
       <div className="muted" style={{ margin: "14px 0 6px" }}>
-        Where it's scheduled
+        Where it&apos;s scheduled
       </div>
       {block.pieces.map((piece) => (
         <PieceRow

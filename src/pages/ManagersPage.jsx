@@ -112,8 +112,8 @@ export default function ManagersPage() {
         <>
           <h3 style={{ marginTop: 28 }}>Global holidays</h3>
           <p className="muted">
-            Applies to every cluster's calendar — e.g. Diwali. Cluster-specific holidays are added from each
-            cluster's own page instead.
+            Applies to every cluster&apos;s calendar — e.g. Diwali. Cluster-specific holidays are added from each
+            cluster&apos;s own page instead.
           </p>
           <form className="form-stack" onSubmit={handleAddHoliday} style={{ marginBottom: 16, maxWidth: 420 }}>
             <input

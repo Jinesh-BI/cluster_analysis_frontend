@@ -431,7 +431,7 @@ function PlanningActivityRow({
 
           {!date ? (
             <p className="muted" style={{ margin: 0 }}>
-              This activity isn't placed on a day yet.
+              This activity isn&apos;t placed on a day yet.
             </p>
           ) : disabledReason ? (
             <p className="muted" style={{ margin: 0 }}>
@@ -827,7 +827,7 @@ function PlotRow({
 
             {target && targetLocked && (
               <p className="muted" style={{ margin: "0 0 10px" }}>
-                Already completed — can't be rescheduled.
+                Already completed — can&apos;t be rescheduled.
               </p>
             )}
             {target && !targetLocked && activePiece && (
@@ -1164,7 +1164,7 @@ function PlanningWorkbench({
             <div className="planner-panel__header planner-panel__header--row">
               <div>
                 <strong>Crew calendar</strong>
-                <span className="muted">Click a day to see what's placed on it.</span>
+                <span className="muted">Click a day to see what&apos;s placed on it.</span>
               </div>
               <div className="planner-legend">
                 <span>

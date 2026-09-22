@@ -23,7 +23,7 @@ export default function DelegationOverview() {
 
   return (
     <div className="info-card" style={{ marginBottom: 20 }}>
-      <div className="info-card__title">Your team's delegation</div>
+      <div className="info-card__title">Your team&apos;s delegation</div>
       <div className="stat-row" style={{ marginBottom: overview.by_arm.length ? 10 : 0 }}>
         <div className="stat-box">
           <div className="stat-box__value">{overview.total_clusters}</div>

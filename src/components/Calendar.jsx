@@ -162,7 +162,7 @@ function MonthGrid({ year, month, cellSize, getDayData, activeDate, onSelectDay 
         ))}
       </div>
       <div className="month-grid__label">
-        {MONTH_LABELS[month]} '{String(year).slice(2)}
+        {MONTH_LABELS[month]} &apos;{String(year).slice(2)}
       </div>
     </div>
   );
