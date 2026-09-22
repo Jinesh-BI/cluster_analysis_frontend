@@ -419,10 +419,12 @@ export default function MukkadamJobsBoard() {
           />
 
           {!error && (
-            <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-              {stats.total} job{stats.total === 1 ? "" : "s"} · {stats.completed} done · {stats.inProgress} running ·{" "}
-              {stats.notStarted} not started
-            </Typography>
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+              <Chip size="small" label={`${stats.total} ${stats.total === 1 ? "Job" : "Jobs"}`} sx={{ fontWeight: 700 }} />
+              <Chip size="small" label={`${stats.completed} Done`} color="success" variant="outlined" sx={{ fontWeight: 700 }} />
+              <Chip size="small" label={`${stats.inProgress} Running`} color="warning" variant="outlined" sx={{ fontWeight: 700 }} />
+              <Chip size="small" color="error" variant={stats.notStarted > 0 ? "filled" : "outlined"} label={`${stats.notStarted} Not Started`}/>
+            </Stack>
           )}
         </Stack>
 
