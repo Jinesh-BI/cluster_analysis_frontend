@@ -94,9 +94,12 @@ jobs:
 
             [ -f "$REPO_DIR/.env.prod" ] || fail ".env.prod not found in $REPO_DIR — create it on the server before deploying (it is gitignored on purpose)."
 
-            # ---- 2. Install & build ----------------------------------------------
+            # ---- 2. Install, lint & build -----------------------------------------
             log "Installing dependencies (npm ci)"
             npm ci || fail "npm ci failed"
+
+            log "Linting"
+            npm run lint || fail "npm run lint failed — fix lint errors before deploying"
 
             log "Building production bundle"
             npm run build || fail "npm run build failed"
