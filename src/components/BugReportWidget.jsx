@@ -45,7 +45,7 @@ export default function BugReportWidget({
       cleanupStreams();
       clearTimeout(timerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   useEffect(() => {
@@ -53,6 +53,12 @@ export default function BugReportWidget({
     const t = setTimeout(() => setToast(""), 3000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (phase === "reviewing" && videoRef.current && blobRef.current) {
+      videoRef.current.src = URL.createObjectURL(blobRef.current);
+    }
+  }, [phase]);
 
   if (!supported) return null; // unsupported browser — stay out of the way
 
@@ -166,12 +172,6 @@ export default function BugReportWidget({
     }
   }
 
-  useEffect(() => {
-    if (phase === "reviewing" && videoRef.current && blobRef.current) {
-      videoRef.current.src = URL.createObjectURL(blobRef.current);
-    }
-  }, [phase]);
-
   return (
     <>
       <button
@@ -192,7 +192,7 @@ export default function BugReportWidget({
       {(phase === "reviewing" || phase === "sending") && (
         <div style={styles.panel}>
           <h4 style={styles.heading}>Review your recording</h4>
-          <p style={styles.hint}>Add a quick note if it's useful, then send it.</p>
+          <p style={styles.hint}>Add a quick note if it&apos;s useful, then send it.</p>
           <video ref={videoRef} controls style={styles.video} />
           <textarea
             rows={2}

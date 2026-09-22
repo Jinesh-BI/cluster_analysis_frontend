@@ -127,7 +127,7 @@ export default function ClusterActivityToday({ clusterId }) {
   return (
     <div className="info-card">
       <div className="info-card__title-row">
-        <div className="info-card__title">{label}'s activities</div>
+        <div className="info-card__title">{label}&apos;s activities</div>
         <div style={{ display: "flex", gap: 6 }}>
           <button
             className={dayMode === "today" ? "btn btn-primary" : "btn"}

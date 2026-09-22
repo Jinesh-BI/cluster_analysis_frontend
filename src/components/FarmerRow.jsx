@@ -113,7 +113,7 @@ export default function FarmerRow({ clusterId, farmer, coverage }) {
           {error && <p className="error-text">{error}</p>}
 
           {data && !data.booking && (
-            <p className="muted">No matching booking found for this cluster's season.</p>
+            <p className="muted">No matching booking found for this cluster&apos;s season.</p>
           )}
 
           {data?.booking && (
@@ -159,7 +159,7 @@ export default function FarmerRow({ clusterId, farmer, coverage }) {
             </>
           )}
           {activities?.length === 0 && (
-            <p className="muted" style={{ marginTop: 10 }}>No booked activities found for this cluster's season.</p>
+            <p className="muted" style={{ marginTop: 10 }}>No booked activities found for this cluster&apos;s season.</p>
           )}
         </div>
       )}

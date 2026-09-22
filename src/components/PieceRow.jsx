@@ -102,7 +102,7 @@ export default function PieceRow({
 
       {locked ? (
         <p className="muted" style={{ margin: 0 }}>
-          Already completed — can't be rescheduled.
+          Already completed — can&apos;t be rescheduled.
         </p>
       ) : (
         <div className="piece-row__actions">
@@ -206,7 +206,7 @@ export default function PieceRow({
             </p>
           )}
           <p className="muted" style={{ margin: 0, fontSize: 11 }}>
-            Only works on a date that's already saved to your plan.
+            Only works on a date that&apos;s already saved to your plan.
           </p>
         </div>
       )}

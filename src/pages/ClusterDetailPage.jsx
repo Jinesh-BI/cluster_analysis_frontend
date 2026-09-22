@@ -308,7 +308,7 @@ export default function ClusterDetailPage() {
             ))}
         </div>
         <p className="muted" style={{ marginTop: -4, marginBottom: 10 }}>
-          Which farmers' vault balances can cover their upcoming September activities.
+          Which farmers&apos; vault balances can cover their upcoming September activities.
         </p>
         <div className="coverage-stat-row">
           <div className={`stat-box ${coverageStats.atRisk > 0 ? "stat-box--urgent" : "stat-box--healthy"}`}>

@@ -79,7 +79,7 @@ export default function TodayTomorrowActivities() {
       <div className="info-card__title-row">
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div className="info-card__title" style={{ marginBottom: 0 }}>
-            What's going on {label.toLowerCase()}
+            What&apos;s going on {label.toLowerCase()}
           </div>
           {clusters?.length > 0 && (
             <span className="status-pill">

@@ -45,7 +45,7 @@ export default function PlotTimeline({ plotId, farmerName, crop, variety, acres,
   return (
     <div style={{ marginBottom: 14 }}>
       <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
-        {label}'s full schedule{undatedCount ? ` (${undatedCount} not yet placed)` : ""}
+        {label}&apos;s full schedule{undatedCount ? ` (${undatedCount} not yet placed)` : ""}
       </div>
       <svg width="100%" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} style={{ display: "block" }}>
         <line x1={MARGIN} y1={HEIGHT / 2} x2={WIDTH - MARGIN} y2={HEIGHT / 2} stroke="#e2e5df" strokeWidth="2" />

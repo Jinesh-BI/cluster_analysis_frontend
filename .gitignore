@@ -31,3 +31,5 @@ lerna-debug.log*
 *.swo
 
 reference/
+
+.husky/
