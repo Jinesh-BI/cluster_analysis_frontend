@@ -87,12 +87,12 @@ jobs:
             git fetch --prune origin || fail "git fetch failed — check server network/SSH access to GitHub"
             git checkout main || fail "git checkout main failed"
             # reset --hard only touches tracked files, so gitignored files like
-            # .env.prod (which must already exist on the server) are preserved.
+            # .env (which must already exist on the server) are preserved.
             git reset --hard origin/main || fail "git reset --hard origin/main failed"
             GIT_SHA="$(git rev-parse --short HEAD)"
             log "Building commit $GIT_SHA"
 
-            [ -f "$REPO_DIR/.env.prod" ] || fail ".env.prod not found in $REPO_DIR — create it on the server before deploying (it is gitignored on purpose)."
+            [ -f "$REPO_DIR/.env" ] || fail ".env not found in $REPO_DIR — create it on the server before deploying (it is gitignored on purpose)."
 
             # ---- 2. Install, lint & build -----------------------------------------
             log "Installing dependencies (npm ci)"
