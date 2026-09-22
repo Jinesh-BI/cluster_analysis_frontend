@@ -1,0 +1,86 @@
+name: CI - Build and Test
+
+# Runs on every PR targeting main and re-runs on new commits pushed to the
+# PR. Configure this as a required status check under
+# Settings -> Branches -> Branch protection rules -> main, so GitHub blocks
+# merging until this workflow succeeds.
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  # Safety net: also validate direct pushes to main (e.g. merge commits),
+  # so a broken main never happens silently.
+  push:
+    branches:
+      - main
+
+# Cancel superseded runs on the same PR to save CI time; never cancel a
+# run already validating main itself.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Install & Build
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (clean, reproducible)
+        run: npm ci
+
+      - name: Lint (if configured)
+        run: |
+          if npm run | grep -qE '^\s*lint\b'; then
+            npm run lint
+          else
+            echo "No 'lint' script defined in package.json — skipping."
+          fi
+
+      - name: Type-check (if configured)
+        run: |
+          if npm run | grep -qE '^\s*(type-check|typecheck)\b'; then
+            npm run type-check || npm run typecheck
+          else
+            echo "No type-check script defined — skipping."
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Verify build output
+        run: |
+          if [ ! -d dist ] || [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            echo "::error::Build succeeded but dist/ is missing or empty."
+            exit 1
+          fi
+          if [ ! -f dist/index.html ]; then
+            echo "::error::dist/index.html not found — build output looks incomplete."
+            exit 1
+          fi
+          echo "Build output verified: $(du -sh dist | cut -f1) in dist/"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### CI result" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Install, lint/type-check (if configured) and production build all passed." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "❌ One or more checks failed — see the failed step above. Merge is blocked while this is red." >> "$GITHUB_STEP_SUMMARY"
+          fi

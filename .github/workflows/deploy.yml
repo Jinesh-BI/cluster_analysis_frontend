@@ -1,0 +1,192 @@
+name: CD - Deploy to Production
+
+# Fires only after code lands on main (i.e. after a PR has been merged —
+# the ci.yml workflow already gated that merge). Also available as a
+# manual re-run for redeploying the current main without a new commit.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+# Never run two deploys at once — a second push/dispatch while a deploy is
+# in flight is queued (not cancelled), so we never leave the release
+# directory or the `current` symlink in a half-updated state.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy (git pull + build on server, atomic swap)
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - name: Guard required secrets
+        run: |
+          missing=()
+          [ -z "${{ secrets.SERVER_HOST }}" ] && missing+=("SERVER_HOST")
+          [ -z "${{ secrets.SERVER_USER }}" ] && missing+=("SERVER_USER")
+          [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && missing+=("SSH_PRIVATE_KEY")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Deploy over SSH
+        id: deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            set -Eeuo pipefail
+
+            # ---- Configuration -------------------------------------------------
+            REPO_DIR="/home/ubuntu/cluster_analysis_frontend"
+            BASE_DIR="/var/www/cluster_analysis_frontend"
+            RELEASES_DIR="$BASE_DIR/releases"
+            CURRENT_LINK="$BASE_DIR/current"
+            KEEP_RELEASES=5
+            HEALTH_URL="https://am.phala.work/"
+            TIMESTAMP="$(date +%Y%m%d%H%M%S)"
+            RELEASE_DIR="$RELEASES_DIR/$TIMESTAMP"
+            LOCK_FILE="/tmp/cluster_analysis_frontend.deploy.lock"
+
+            log()  { echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') - $*"; }
+            fail() { echo "[deploy] ERROR: $*" >&2; exit 1; }
+
+            # ---- Single-instance lock (defense in depth alongside the GH
+            # Actions concurrency group above) -----------------------------------
+            exec 9>"$LOCK_FILE"
+            if ! flock -n 9; then
+              fail "Another deploy is already running on this server. Aborting."
+            fi
+
+            trap 'log "Deploy script exited (see above for the failing step). If the failure happened after the symlink swap, the health check step already rolled it back — otherwise the previous release is still live and untouched."' EXIT
+
+            # ---- Sanity checks ---------------------------------------------------
+            command -v git   >/dev/null 2>&1 || fail "git is not installed"
+            command -v npm   >/dev/null 2>&1 || fail "npm is not installed"
+            command -v curl  >/dev/null 2>&1 || fail "curl is not installed"
+            [ -d "$REPO_DIR/.git" ] || fail "Repo not found at $REPO_DIR — clone it there once manually first."
+            mkdir -p "$RELEASES_DIR"
+
+            # ---- 1. git pull on server (source of truth for the build) ----------
+            cd "$REPO_DIR"
+            log "Fetching latest main"
+            git fetch --prune origin || fail "git fetch failed — check server network/SSH access to GitHub"
+            git checkout main || fail "git checkout main failed"
+            # reset --hard only touches tracked files, so gitignored files like
+            # .env.prod (which must already exist on the server) are preserved.
+            git reset --hard origin/main || fail "git reset --hard origin/main failed"
+            GIT_SHA="$(git rev-parse --short HEAD)"
+            log "Building commit $GIT_SHA"
+
+            [ -f "$REPO_DIR/.env.prod" ] || fail ".env.prod not found in $REPO_DIR — create it on the server before deploying (it is gitignored on purpose)."
+
+            # ---- 2. Install, lint & build -----------------------------------------
+            log "Installing dependencies (npm ci)"
+            npm ci || fail "npm ci failed"
+
+            log "Linting"
+            npm run lint || fail "npm run lint failed — fix lint errors before deploying"
+
+            log "Building production bundle"
+            npm run build || fail "npm run build failed"
+
+            if [ ! -d "$REPO_DIR/dist" ] || [ -z "$(ls -A "$REPO_DIR/dist" 2>/dev/null)" ]; then
+              fail "dist/ is missing or empty after build — refusing to publish an empty release"
+            fi
+            [ -f "$REPO_DIR/dist/index.html" ] || fail "dist/index.html missing — build output looks incomplete"
+
+            # ---- 3. Publish as a new, isolated release directory -----------------
+            log "Publishing new release: $RELEASE_DIR"
+            mkdir -p "$RELEASE_DIR"
+            cp -r "$REPO_DIR/dist/." "$RELEASE_DIR/"
+            echo "$GIT_SHA" > "$RELEASE_DIR/.commit"
+
+            # No chown needed: $BASE_DIR is owned by the deploy user (set up once,
+            # see server setup notes), and 755 is world-readable so nginx's
+            # worker process (www-data) can still read/traverse it as "other".
+            chmod -R 755 "$RELEASE_DIR"
+
+            PREVIOUS_TARGET=""
+            if [ -L "$CURRENT_LINK" ]; then
+              PREVIOUS_TARGET="$(readlink -f "$CURRENT_LINK")"
+            fi
+
+            rollback_symlink() {
+              if [ -n "$PREVIOUS_TARGET" ]; then
+                log "Rolling back 'current' symlink to previous release: $PREVIOUS_TARGET"
+                ln -sfn "$PREVIOUS_TARGET" "$CURRENT_LINK.tmp"
+                mv -Tf "$CURRENT_LINK.tmp" "$CURRENT_LINK"
+                sudo systemctl reload nginx || log "WARNING: nginx reload failed during rollback — check server manually"
+              else
+                log "No previous release to roll back to (this looks like the first-ever deploy)."
+              fi
+            }
+
+            # ---- 4. Atomic, zero-downtime symlink swap ----------------------------
+            # ln -sfn + mv -T is atomic on the same filesystem: nginx always sees
+            # either the old target or the new one, never a half-written state.
+            log "Switching current -> $RELEASE_DIR"
+            ln -sfn "$RELEASE_DIR" "$CURRENT_LINK.tmp"
+            mv -Tf "$CURRENT_LINK.tmp" "$CURRENT_LINK"
+
+            if ! sudo nginx -t; then
+              log "nginx config test failed after swap"
+              rollback_symlink
+              fail "nginx -t failed — rolled back to previous release, site was not left down"
+            fi
+
+            if ! sudo systemctl reload nginx; then
+              log "nginx reload failed after swap"
+              rollback_symlink
+              fail "nginx reload failed — rolled back to previous release"
+            fi
+
+            # ---- 5. Health check with automatic rollback ---------------------------
+            log "Health-checking $HEALTH_URL"
+            ATTEMPT=0
+            MAX_ATTEMPTS=5
+            until curl -kfsS -o /dev/null --max-time 5 --resolve am.phala.work:443:127.0.0.1 "$HEALTH_URL"; do
+              ATTEMPT=$((ATTEMPT + 1))
+              if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+                log "Health check failed after $ATTEMPT attempts"
+                rollback_symlink
+                fail "Health check failed on the new release — automatically rolled back, production stayed on the previous build"
+              fi
+              log "Health check attempt $ATTEMPT failed; retrying in 2 seconds"
+              sleep 2
+            done
+            log "Health check passed."
+
+            # ---- 6. Prune old releases (keep last $KEEP_RELEASES for rollback) ----
+            log "Pruning releases older than the last $KEEP_RELEASES"
+            cd "$RELEASES_DIR"
+            ls -1dt */ 2>/dev/null | tail -n "+$((KEEP_RELEASES + 1))" | xargs -r -I{} rm -rf -- "{}"
+
+            trap - EXIT
+            log "Deploy of $GIT_SHA complete. Live at $CURRENT_LINK -> $RELEASE_DIR"
+
+      - name: Report result
+        if: always()
+        run: |
+          if [ "${{ steps.deploy.outcome }}" = "success" ]; then
+            echo "### ✅ Deploy succeeded" >> "$GITHUB_STEP_SUMMARY"
+            echo "Zero-downtime release published; previous build kept on server for rollback." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ❌ Deploy failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "The server-side script aborts before switching traffic on any failure prior to the symlink swap, and auto-rolls-back if a failure happens after the swap (nginx test, reload, or health check). Production should still be serving the last good build. Check the SSH step log above for the exact failing stage." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
