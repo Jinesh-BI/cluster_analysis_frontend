@@ -40,4 +40,22 @@ export const opsApi = {
   getFarmerActivityCoverage: (farmerId) =>
     request(`/payment-schedule/coverage/${farmerId}/`),
 
+  // Bypasses a ledger entry's normal 24h maturity window and releases it
+  // immediately — a real mutation (unlike the read-only mukkadam
+  // integration API), so it requires a reason for the audit trail.
+  // payload: { mukkadam_id, ledger_id, reason }
+  releaseLedgerEntryEarly: (payload) =>
+    request(`/plot-analysis/tender/release-ledger-entry-early/`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  // Marks one or more completed-work notifications as read. The backend
+  // derives read_by { id, name, read_at } from the Token-authenticated
+  // caller — the request body only carries which notifications to mark.
+  markNotificationsRead: (notificationIds) =>
+    request(`/plot-analysis/tender/notifications-mark/`, {
+      method: "PUT",
+      body: JSON.stringify({ notification_ids: notificationIds }),
+    }),
 };

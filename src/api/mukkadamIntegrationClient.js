@@ -63,6 +63,16 @@ function buildAllocationsQuery({ fromDate, mukkadamId, isPermanent, isTenderSign
   return qs ? `?${qs}` : "";
 }
 
+// Same "omit means all" rule again, plus since/mukkadam_id/is_read.
+function buildNotificationsQuery({ since, mukkadamId, isRead } = {}) {
+  const params = new URLSearchParams();
+  if (since) params.set("since", since);
+  if (mukkadamId !== undefined && mukkadamId !== null) params.set("mukkadam_id", String(mukkadamId));
+  if (isRead === true || isRead === false) params.set("is_read", String(isRead));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export const mukkadamIntegrationApi = {
   // Aggregate tile-level counts — no params.
   getMukkadamCounts: (signal) => request("/tender/api/integration/mukkadams/stats-counts/", { signal }),
@@ -83,4 +93,13 @@ export const mukkadamIntegrationApi = {
   // result set (see AllocationsTable).
   getAllocationsSince: (filters, signal) =>
     request(`/tender/api/integration/allocations/${buildAllocationsQuery(filters)}`, { signal }),
+
+  // Polling feed of "mukkadam completed work" notifications — capped at 200
+  // rows/call. Pass the previous response's next_since back in as `since`
+  // to resume where the last poll left off; omit for the default 48h
+  // lookback. filters: { since, mukkadamId, isRead }.
+  getCompletedWorkNotifications: (filters, signal) =>
+    request(`/tender/api/integration/mukkadams/notifications/completed-work/${buildNotificationsQuery(filters)}`, {
+      signal,
+    }),
 };

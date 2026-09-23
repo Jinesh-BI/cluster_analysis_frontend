@@ -1,17 +1,19 @@
 // src/components/mukkadams/LedgerTable.jsx
 //
 // Ledger tab — every MukkadamLedger entry this season, from
-// payment-overview.ledger (no separate fetch). `actions` (can_hold /
-// can_release / can_release_early) are rendered as read-only badges, not
-// buttons — this integration API is read-only end to end (see docs), so
-// showing them as clickable would imply a mutation this page can't do.
+// payment-overview.ledger (no separate fetch). Of `actions` (can_hold /
+// can_release / can_release_early), only can_release_early is surfaced —
+// as a CTA button, since it's the one with a real (mutating) endpoint,
+// opsApi.releaseLedgerEntryEarly — REGIONAL_MANAGER only; see ReleaseEarlyModal.
 import { useMemo, useState } from "react";
 import { Box, Chip, MenuItem, Select, Stack, Typography } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { formatCurrency } from "../../utils/format";
-import { ALL, ActionBadges, TABLE_BOX_SX, TABLE_GRID_SX, formatDateTime, titleCase, useDistinctValues } from "./tableUtils";
+import { useAuth } from "../../context/AuthContext";
+import { ALL, ReleaseEarlyAction, TABLE_BOX_SX, TABLE_GRID_SX, formatDateTime, titleCase, useDistinctValues } from "./tableUtils";
+import ReleaseEarlyModal from "./ReleaseEarlyModal";
 
 const STATE_COLOR = {
   held: "error",
@@ -82,18 +84,14 @@ const columns = [
     width: 170,
     valueGetter: (v) => (v ? formatDateTime(v) : "—"),
   },
-  {
-    field: "actions",
-    headerName: "Valid ops actions",
-    width: 130,
-    sortable: false,
-    renderCell: (params) => <ActionBadges actions={params.value} />,
-  },
 ];
 
-export default function LedgerTable({ ledger, loading }) {
+export default function LedgerTable({ ledger, loading, mukkadamId, onReleased }) {
+  const { user } = useAuth();
+  const canReleaseEarly = user?.role === "REGIONAL_MANAGER" || user?.role === "ADMIN";
   const [entryTypeFilter, setEntryTypeFilter] = useState(ALL);
   const [typeFilter, setTypeFilter] = useState(ALL);
+  const [releaseTarget, setReleaseTarget] = useState(null); // the ledger row being released, or null
 
   const rows = ledger ?? [];
   const entryTypeOptions = useDistinctValues(rows, "entry_type");
@@ -106,6 +104,25 @@ export default function LedgerTable({ ledger, loading }) {
         return true;
       }),
     [rows, entryTypeFilter, typeFilter],
+  );
+
+  const columnsWithActions = useMemo(
+    () => [
+      ...columns,
+      {
+        field: "actions",
+        headerName: "Valid ops actions",
+        width: 160,
+        sortable: false,
+        renderCell: (params) => (
+          <ReleaseEarlyAction
+            actions={params.value}
+            onClick={canReleaseEarly ? () => setReleaseTarget(params.row) : undefined}
+          />
+        ),
+      },
+    ],
+    [canReleaseEarly],
   );
 
   return (
@@ -133,7 +150,7 @@ export default function LedgerTable({ ledger, loading }) {
         <DataGrid
           autoHeight
           rows={filteredRows}
-          columns={columns}
+          columns={columnsWithActions}
           loading={loading}
           getRowId={(row) => row.id}
           disableRowSelectionOnClick
@@ -142,6 +159,18 @@ export default function LedgerTable({ ledger, loading }) {
           sx={TABLE_GRID_SX}
         />
       </Box>
+
+      <ReleaseEarlyModal
+        open={Boolean(releaseTarget)}
+        mukkadamId={mukkadamId}
+        ledgerId={releaseTarget?.id}
+        amount={releaseTarget?.amount}
+        onClose={() => setReleaseTarget(null)}
+        onReleased={() => {
+          setReleaseTarget(null);
+          onReleased?.();
+        }}
+      />
     </Box>
   );
 }

@@ -7,9 +7,7 @@
 // current result set actually contains, so filtering degrades gracefully
 // as new values show up rather than hardcoding a list that goes stale.
 import { useMemo } from "react";
-import { Stack, Tooltip, Typography } from "@mui/material";
-import PauseCircleOutlinedIcon from "@mui/icons-material/PauseCircleOutlined";
-import PlayCircleOutlinedIcon from "@mui/icons-material/PlayCircleOutlined";
+import { Button, Typography } from "@mui/material";
 import FastForwardOutlinedIcon from "@mui/icons-material/FastForwardOutlined";
 
 export const ALL = "__all__";
@@ -63,21 +61,13 @@ export const TABLE_GRID_SX = {
 };
 
 // Shared with LedgerTable and MaturingTable — both surface the same
-// { can_hold, can_release, can_release_early } shape from the read-only
-// integration API. Rendered as inert badges (never buttons): this API
-// can't perform the mutation, so a clickable control here would lie.
-const ACTION_META = {
-  can_hold: { icon: PauseCircleOutlinedIcon, label: "Hold is currently a valid ops action on this entry" },
-  can_release: { icon: PlayCircleOutlinedIcon, label: "Release is currently a valid ops action on this entry" },
-  can_release_early: {
-    icon: FastForwardOutlinedIcon,
-    label: "Early release is currently a valid ops action on this entry",
-  },
-};
-
-export function ActionBadges({ actions }) {
-  const active = Object.entries(actions || {}).filter(([, v]) => v);
-  if (active.length === 0) {
+// { can_hold, can_release, can_release_early } shape, but can_hold/
+// can_release have no endpoint yet, so they're not surfaced at all here —
+// only can_release_early gets a CTA, since opsApi.releaseLedgerEntryEarly
+// is the one real mutation this page can perform. Rendered only when the
+// caller passes onClick (role-gated to REGIONAL_MANAGER by the caller).
+export function ReleaseEarlyAction({ actions, onClick }) {
+  if (!actions?.can_release_early || !onClick) {
     return (
       <Typography variant="body2" color="text.disabled">
         —
@@ -85,17 +75,14 @@ export function ActionBadges({ actions }) {
     );
   }
   return (
-    <Stack direction="row" spacing={0.5}>
-      {active.map(([key]) => {
-        const meta = ACTION_META[key];
-        if (!meta) return null;
-        const Icon = meta.icon;
-        return (
-          <Tooltip key={key} title={meta.label}>
-            <Icon fontSize="small" color="disabled" />
-          </Tooltip>
-        );
-      })}
-    </Stack>
+    <Button
+      size="small"
+      variant="outlined"
+      color="warning"
+      startIcon={<FastForwardOutlinedIcon fontSize="small" />}
+      onClick={onClick}
+    >
+      Release early
+    </Button>
   );
 }
