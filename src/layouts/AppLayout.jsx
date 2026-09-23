@@ -32,6 +32,8 @@ import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useAuth } from "../context/AuthContext";
+import { useNotifications } from "../hooks/useNotifications";
+import NotificationBell from "../components/notifications/NotificationBell";
 
 const DRAWER_WIDTH = 240;
 const COLLAPSED_WIDTH = 72;
@@ -47,6 +49,7 @@ export default function AppLayout() {
   const { user, isManagerTier, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const { notifications, unreadCount, isReadByMe, markAsRead } = useNotifications();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_STORAGE_KEY) === "true";
@@ -84,6 +87,12 @@ export default function AppLayout() {
               <Chip size="small" label={user.role?.replaceAll("_", " ")} variant="outlined" />
             </>
           )}
+          <NotificationBell
+            notifications={notifications}
+            unreadCount={unreadCount}
+            isReadByMe={isReadByMe}
+            markAsRead={markAsRead}
+          />
           <Tooltip title="Log out">
             <IconButton
               onClick={() => {

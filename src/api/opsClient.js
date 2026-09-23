@@ -49,4 +49,13 @@ export const opsApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  // Marks one or more completed-work notifications as read. The backend
+  // derives read_by { id, name, read_at } from the Token-authenticated
+  // caller — the request body only carries which notifications to mark.
+  markNotificationsRead: (notificationIds) =>
+    request(`/plot-analysis/tender/notifications-mark/`, {
+      method: "PUT",
+      body: JSON.stringify({ notification_ids: notificationIds }),
+    }),
 };
