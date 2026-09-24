@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { usePostHog } from "@posthog/react";
+import { track, trackException } from "../analytics/track";
 
 /**
  * Bug report widget — screen + voice recording.
@@ -23,6 +25,7 @@ export default function BugReportWidget({
   submitUrl = "/bug-reports/submit/",
   maxSeconds = 300,
 }) {
+  const posthog = usePostHog();
   const [phase, setPhase] = useState("idle"); // idle | recording | reviewing | sending
   const [toast, setToast] = useState("");
   const [note, setNote] = useState("");
@@ -162,11 +165,18 @@ export default function BugReportWidget({
         body: formData,
       });
       if (!res.ok) throw new Error("submit failed");
+      track(posthog, "bug_report_submitted", {
+        report_domain: domain,
+        note_provided: Boolean(note.trim()),
+        recording_size_bytes: blobRef.current?.size,
+      });
       blobRef.current = null;
       setNote("");
       setPhase("idle");
       setToast("Thanks — we've got it.");
-    } catch {
+    } catch (error) {
+      trackException(posthog, error);
+      track(posthog, "bug_report_submit_failed", { report_domain: domain });
       setPhase("reviewing");
       setToast("Couldn't send that. Check your connection and try again.");
     }

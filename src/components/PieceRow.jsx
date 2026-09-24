@@ -14,7 +14,9 @@
 // the work is actually placed on a day.
 
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import RatingsList from "./Ratings";
+import { track } from "../analytics/track";
 
 const PERCENT_OPTIONS = [25, 50, 75, 100];
 
@@ -29,6 +31,7 @@ export default function PieceRow({
   onAllocateMukkadam,
   onUnassignMukkadam,
 }) {
+  const posthog = usePostHog();
   const options = PERCENT_OPTIONS.filter((p) => p <= piece.percent);
   const [percent, setPercent] = useState(options[options.length - 1] || 100);
   const locked = block.completed && !isAdmin;
@@ -58,6 +61,11 @@ export default function PieceRow({
     const result = await onAllocateMukkadam(block.activity_id, piece.date, mukkadam, percentToAdd);
     setSaving(false);
     if (result?.ok) {
+      track(posthog, "mukkadam_allocated_to_piece", {
+        activity_id: block.activity_id,
+        mukkadam_id: mukkadam.mukkadam_id,
+        percent: percentToAdd,
+      });
       setShowAddMukkadam(false);
       setPickedMukkadamId("");
       setPickedPercent(null);
@@ -69,7 +77,9 @@ export default function PieceRow({
   async function handleRemove(allocationId) {
     setMukkadamError(null);
     const result = await onUnassignMukkadam(block.activity_id, allocationId);
-    if (!result?.ok) {
+    if (result?.ok) {
+      track(posthog, "mukkadam_unassigned_from_piece", { activity_id: block.activity_id, allocation_id: allocationId });
+    } else {
       setMukkadamError(result?.error || "Could not remove this allocation.");
     }
   }
@@ -125,12 +135,21 @@ export default function PieceRow({
           </select>
           <button
             className="btn btn-primary"
-            onClick={() => onArmMove(block.activity_id, piece.piece_id, percent)}
+            onClick={() => {
+              track(posthog, "piece_move_armed", { activity_id: block.activity_id, piece_id: piece.piece_id, percent });
+              onArmMove(block.activity_id, piece.piece_id, percent);
+            }}
           >
             Move to a day
           </button>
           {piece.date && (
-            <button className="btn" onClick={() => onUnschedule(block.activity_id, piece.piece_id, percent)}>
+            <button
+              className="btn"
+              onClick={() => {
+                track(posthog, "piece_unscheduled", { activity_id: block.activity_id, piece_id: piece.piece_id, percent });
+                onUnschedule(block.activity_id, piece.piece_id, percent);
+              }}
+            >
               Unschedule
             </button>
           )}

@@ -7,6 +7,7 @@
 // default — this is meant to answer "how much do we owe today" first,
 // with a date range as the opt-in, not the default, view.
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import {
   Alert,
   Box,
@@ -35,6 +36,7 @@ import InsightsSummary from "../../components/mukkadams/insights/InsightsSummary
 // import AllocationTrendChart from "../../components/mukkadams/insights/AllocationTrendChart";
 // import MukkadamLeaderboard from "../../components/mukkadams/insights/MukkadamLeaderboard";
 import MukkadamInsightsTable from "../../components/mukkadams/insights/MukkadamInsightsTable";
+import { track, useDebouncedTrack } from "../../analytics/track";
 
 // The insights table now paginates itself client-side (DataGrid's own
 // footer, same as every other table in the app) rather than relying on
@@ -46,6 +48,7 @@ const PAGE_SIZE = 50;
 const TODAY = localDateStr(0);
 
 export default function AllocationsInsightsPage() {
+  const posthog = usePostHog();
   const [dateFrom, setDateFrom] = useState(TODAY);
   const [dateTo, setDateTo] = useState(TODAY);
   // Single-day nav is the default (today, shiftable ±1 day like
@@ -67,10 +70,13 @@ export default function AllocationsInsightsPage() {
 
   const isToday = dateFrom === TODAY && dateTo === TODAY;
 
+  useDebouncedTrack(posthog, "insights_search_applied", search);
+
   // Shifts the single-day nav by delta days, keeping From/To in lockstep
   // (they're the same day outside range mode).
   const shiftDay = (delta) => {
     const next = shiftDateStr(dateFrom, delta);
+    track(posthog, "insights_date_changed", { mode: delta < 0 ? "previous_day" : "next_day" });
     setDateFrom(next);
     setDateTo(next);
   };
@@ -79,6 +85,7 @@ export default function AllocationsInsightsPage() {
   // as a zero-width range the user then widens, leaving it collapses back
   // to a single day taken from "From".
   const toggleRangeMode = () => {
+    track(posthog, "insights_range_mode_toggled", { range_mode: !rangeMode });
     setDateTo(dateFrom);
     setRangeMode((r) => !r);
   };
@@ -187,6 +194,7 @@ export default function AllocationsInsightsPage() {
                 variant={isToday ? "contained" : "outlined"}
                 startIcon={<TodayOutlinedIcon fontSize="small" />}
                 onClick={() => {
+                  track(posthog, "insights_date_changed", { mode: "today" });
                   setDateFrom(TODAY);
                   setDateTo(TODAY);
                 }}
@@ -213,7 +221,15 @@ export default function AllocationsInsightsPage() {
           spacing={1.5}
           sx={{ flex: 1, minWidth: 0, justifyContent: "flex-end" }}
         >
-          <Select size="small" value={workStatus} onChange={(e) => setWorkStatus(e.target.value)} sx={{ minWidth: 160 }}>
+          <Select
+            size="small"
+            value={workStatus}
+            onChange={(e) => {
+              setWorkStatus(e.target.value);
+              track(posthog, "insights_work_status_filter_applied", { value: e.target.value });
+            }}
+            sx={{ minWidth: 160 }}
+          >
             <MenuItem value={ALL}>All work status</MenuItem>
             {WORK_STATUS_OPTIONS.map((v) => (
               <MenuItem key={v} value={v}>
@@ -277,7 +293,15 @@ export default function AllocationsInsightsPage() {
 
           {totalPages > 1 && (
             <Stack direction="row" sx={{ justifyContent: "center", mt: 2.5 }}>
-              <Pagination count={totalPages} page={page} onChange={(_, p) => setPage(p)} color="primary" />
+              <Pagination
+                count={totalPages}
+                page={page}
+                onChange={(_, p) => {
+                  track(posthog, "insights_pagination_changed", { page: p });
+                  setPage(p);
+                }}
+                color="primary"
+              />
             </Stack>
           )}
         </>

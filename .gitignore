@@ -30,6 +30,8 @@ lerna-debug.log*
 *.swp
 *.swo
 
+.claude/
+
 reference/
 
 .husky/

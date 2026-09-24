@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import {
   Alert,
   Button,
@@ -15,6 +16,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { track, trackException, trackGroup } from "../../analytics/track";
 import { opsApi } from "../../api/opsClient";
 import { formatCurrency } from "../../utils/format";
 
@@ -48,9 +50,11 @@ export default function ReleaseEarlyModal({
   mukkadamId,
   ledgerId,
   amount,
+  source,
   onClose,
   onReleased,
 }) {
+  const posthog = usePostHog();
   const [selectedReason, setSelectedReason] = useState("");
   const [customReason, setCustomReason] = useState("");
   // Two-step flow: pick a reason, then a distinct final-confirmation step
@@ -113,9 +117,19 @@ export default function ReleaseEarlyModal({
         reason: resolvedReason(),
       });
 
+      trackGroup(posthog, "mukkadam", mukkadamId, {});
+      track(posthog, "earning_released_early", {
+        mukkadam_id: mukkadamId,
+        ledger_id: ledgerId,
+        amount,
+        reason_code: selectedReason,
+        source,
+      });
       reset();
       onReleased?.();
     } catch (err) {
+      trackException(posthog, err);
+      track(posthog, "earning_release_failed", { mukkadam_id: mukkadamId, ledger_id: ledgerId, source });
       setError(
         err?.message || "Unable to release this earning. Please try again."
       );

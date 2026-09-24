@@ -1,7 +1,9 @@
 // src/components/FarmerRow.jsx
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../api/client";
 import { formatCurrency } from "../utils/format";
+import { track, trackException } from "../analytics/track";
 
 function coveragePill(coverage) {
   if (!coverage || coverage.status !== "ok") return null;
@@ -16,6 +18,7 @@ function coveragePill(coverage) {
 }
 
 export default function FarmerRow({ clusterId, farmer, coverage }) {
+  const posthog = usePostHog();
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [activities, setActivities] = useState(null);
@@ -28,6 +31,7 @@ export default function FarmerRow({ clusterId, farmer, coverage }) {
       return;
     }
     setOpen(true);
+    track(posthog, "farmer_row_expanded", { cluster_id: clusterId, farmer_id: farmer.farmer_id });
     if (data) return; // already fetched once, don't refetch on every toggle
 
     setLoading(true);
@@ -40,6 +44,7 @@ export default function FarmerRow({ clusterId, farmer, coverage }) {
       setData(payments);
       setActivities(bookedActivities);
     } catch (e) {
+      trackException(posthog, e);
       setError(e.message);
     } finally {
       setLoading(false);
@@ -56,7 +61,7 @@ export default function FarmerRow({ clusterId, farmer, coverage }) {
     <li className="farmer-row">
       <button className="farmer-row__toggle" onClick={toggle}>
         <span>
-          {farmer.farmer_name} — {farmer.phone_number || "no phone on file"}
+          {farmer.farmer_name} — <span className="ph-no-capture">{farmer.phone_number || "no phone on file"}</span>
           <span className="muted">
             {" • "}
             {farmer.plot_count} {farmer.plot_count === 1 ? "plot" : "plots"} •{" "}

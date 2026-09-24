@@ -5,12 +5,15 @@
 // add-cost form refreshes the list on success.
 
 import { useEffect, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../api/client";
 import { formatCurrency } from "../utils/format";
+import { track, trackException } from "../analytics/track";
 
 const PRESET_CATEGORIES = ["Shed", "Essentials", "Travel", "Labor"];
 
 export default function ClusterCosts({ clusterId }) {
+  const posthog = usePostHog();
   const [costs, setCosts] = useState(null);
   const [totalSpent, setTotalSpent] = useState(0);
   const [error, setError] = useState(null);
@@ -59,6 +62,12 @@ export default function ClusterCosts({ clusterId }) {
         note,
         amount_spent: Number(amount),
       });
+      track(posthog, "cluster_cost_logged", {
+        cluster_id: clusterId,
+        category: finalCategory,
+        amount: Number(amount),
+        note_provided: Boolean(note.trim()),
+      });
       setCategory(PRESET_CATEGORIES[0]);
       setCustomCategory("");
       setNote("");
@@ -66,6 +75,8 @@ export default function ClusterCosts({ clusterId }) {
       setShowForm(false);
       load();
     } catch (e) {
+      trackException(posthog, e);
+      track(posthog, "cluster_cost_log_failed", { cluster_id: clusterId });
       setFormError(e.message);
     } finally {
       setSaving(false);

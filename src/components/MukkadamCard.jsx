@@ -14,10 +14,12 @@
 // mukkadam_id rather than clusterId.
 
 import { useEffect, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../api/client";
 import { mukkadamIntegrationApi } from "../api/mukkadamIntegrationClient";
 import { formatCurrency } from "../utils/format";
 import { useCountdown } from "../hooks/useCountdown";
+import { track } from "../analytics/track";
 import Tooltip from "./Tooltip";
 
 const PAYMENT_CATEGORIES = [
@@ -83,6 +85,7 @@ function MukkadamLedgerPanel({ ledger, loading, error }) {
 }
 
 export default function MukkadamCard({ clusterId, deployed }) {
+  const posthog = usePostHog();
   const [mukkadam, setMukkadam] = useState(undefined); // undefined = loading
   const [showDetails, setShowDetails] = useState(false);
   const [detailsTab, setDetailsTab] = useState("payments");
@@ -148,7 +151,7 @@ export default function MukkadamCard({ clusterId, deployed }) {
         <div>
           <strong>{mukkadam.mukkadam_name}</strong>
           <div className="muted">
-            {mukkadam.mobile_numbers || "no phone on file"} • Crew of {mukkadam.crew_size ?? "—"}
+            <span className="ph-no-capture">{mukkadam.mobile_numbers || "no phone on file"}</span> • Crew of {mukkadam.crew_size ?? "—"}
           </div>
         </div>
         {totalPaymentCount > 0 && (
@@ -163,7 +166,14 @@ export default function MukkadamCard({ clusterId, deployed }) {
 
       {totalPaymentCount > 0 && (
         <>
-          <button className="btn" style={{ marginTop: 10 }} onClick={() => setShowDetails((v) => !v)}>
+          <button
+            className="btn"
+            style={{ marginTop: 10 }}
+            onClick={() => {
+              track(posthog, "mukkadam_card_details_toggled", { mukkadam_id: mukkadam.mukkadam_id, expanded: !showDetails });
+              setShowDetails((v) => !v);
+            }}
+          >
             {showDetails ? "Hide" : "Show"} full details
           </button>
 
@@ -173,14 +183,20 @@ export default function MukkadamCard({ clusterId, deployed }) {
                 <button
                   type="button"
                   className={`mukkadam-tab ${detailsTab === "payments" ? "mukkadam-tab--active" : ""}`}
-                  onClick={() => setDetailsTab("payments")}
+                  onClick={() => {
+                    track(posthog, "mukkadam_card_tab_switched", { mukkadam_id: mukkadam.mukkadam_id, tab: "payments" });
+                    setDetailsTab("payments");
+                  }}
                 >
                   Payments
                 </button>
                 <button
                   type="button"
                   className={`mukkadam-tab ${detailsTab === "ledger" ? "mukkadam-tab--active" : ""}`}
-                  onClick={() => setDetailsTab("ledger")}
+                  onClick={() => {
+                    track(posthog, "mukkadam_card_tab_switched", { mukkadam_id: mukkadam.mukkadam_id, tab: "ledger" });
+                    setDetailsTab("ledger");
+                  }}
                 >
                   Ledger
                 </button>

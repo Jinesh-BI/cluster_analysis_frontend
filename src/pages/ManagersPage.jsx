@@ -1,10 +1,13 @@
 // src/pages/ManagersPage.jsx
 import { useEffect, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { Link } from "react-router-dom";
+import { track, trackException } from "../analytics/track";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
 export default function ManagersPage() {
+  const posthog = usePostHog();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
 
@@ -34,9 +37,15 @@ export default function ManagersPage() {
     setError(null);
     try {
       await api.addGlobalHoliday(holidayForm);
+      track(posthog, "global_holiday_added", {
+        actor_role: user?.role,
+        spans_multiple_days: holidayForm.start_date !== holidayForm.end_date,
+      });
       setHolidayForm({ label: "", start_date: "", end_date: "" });
       loadHolidays();
     } catch (err) {
+      trackException(posthog, err);
+      track(posthog, "global_holiday_add_failed", { actor_role: user?.role });
       setError(err.message);
     } finally {
       setSavingHoliday(false);
@@ -49,9 +58,16 @@ export default function ManagersPage() {
     setError(null);
     try {
       await api.createManager(form);
+      track(posthog, "manager_created", {
+        actor_role: user?.role,
+        created_role: "OPERATIONS_MANAGER",
+        phone_number_provided: Boolean(form.phone_number),
+      });
       setForm({ username: "", password: "", phone_number: "" });
       load();
     } catch (err) {
+      trackException(posthog, err);
+      track(posthog, "manager_create_failed", { actor_role: user?.role });
       setError(err.message);
     } finally {
       setSaving(false);

@@ -6,6 +6,7 @@
 // a defensive guard on `mukkadam` itself since MUI keeps Drawer children
 // mounted through the close transition.
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import {
   Box,
   Card,
@@ -18,6 +19,7 @@ import {
   Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import { track, trackGroup } from "../../analytics/track";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlined";
@@ -31,7 +33,10 @@ function maskAccountNumber(accountNumber, revealed) {
 
 function BankAccountCard({ account, revealed }) {
   return (
-    <Card variant="outlined">
+    // ph-no-capture: excludes this card's bank name/branch/IFSC/beneficiary/
+    // account number from PostHog session replay and autocapture — never
+    // let real bank details leave the app through analytics.
+    <Card variant="outlined" className="ph-no-capture">
       <CardContent>
         <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
           <AccountBalanceOutlinedIcon fontSize="small" color="action" />
@@ -57,7 +62,19 @@ function BankAccountCard({ account, revealed }) {
 }
 
 export default function MukkadamBankDetailsDrawer({ mukkadam, open, onClose }) {
+  const posthog = usePostHog();
   const [revealed, setRevealed] = useState(false);
+
+  function handleToggleReveal() {
+    if (!revealed) {
+      trackGroup(posthog, "mukkadam", mukkadam?.mukkadam_id, { name: mukkadam?.mukkadam_name });
+      track(posthog, "bank_details_revealed", {
+        mukkadam_id: mukkadam?.mukkadam_id,
+        account_count: mukkadam?.bank_accounts?.length ?? 0,
+      });
+    }
+    setRevealed((value) => !value);
+  }
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>
@@ -81,7 +98,7 @@ export default function MukkadamBankDetailsDrawer({ mukkadam, open, onClose }) {
 
         <Stack direction="row" sx={{ justifyContent: "flex-end", mb: 1.5 }}>
           <Tooltip title={revealed ? "Mask account numbers" : "Reveal account numbers"}>
-            <IconButton size="small" onClick={() => setRevealed((r) => !r)}>
+            <IconButton size="small" onClick={handleToggleReveal}>
               {revealed ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
