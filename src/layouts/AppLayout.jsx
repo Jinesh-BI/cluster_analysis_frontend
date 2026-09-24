@@ -26,6 +26,7 @@ import {
 } from "@mui/material";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import Groups2OutlinedIcon from "@mui/icons-material/Groups2Outlined";
+import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import SupervisorAccountOutlinedIcon from "@mui/icons-material/SupervisorAccountOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
@@ -42,6 +43,7 @@ const COLLAPSE_STORAGE_KEY = "sidebar_collapsed";
 const NAV_ITEMS = [
   { label: "Overview", to: "/", icon: DashboardOutlinedIcon, exact: true },
   { label: "Mukkadams", to: "/mukkadams", icon: Groups2OutlinedIcon },
+  { label: "Insights", to: "/mukkadams/insights", icon: InsightsOutlinedIcon },
   // { label: "Payments", to: "/payments", icon: PaymentsOutlinedIcon },
 ];
 
@@ -69,6 +71,13 @@ export default function AppLayout() {
   const items = isManagerTier
     ? [...NAV_ITEMS, { label: "Managers", to: "/managers", icon: SupervisorAccountOutlinedIcon }]
     : NAV_ITEMS;
+
+  // "/mukkadams/insights" satisfies both Mukkadams' and Insights' prefix
+  // match — the most specific (longest) `to` wins, so only one item ever
+  // lights up at once.
+  const activeTo = items
+    .filter((item) => (item.exact ? location.pathname === item.to : location.pathname.startsWith(item.to)))
+    .sort((a, b) => b.to.length - a.to.length)[0]?.to;
 
   const drawerWidth = collapsed ? COLLAPSED_WIDTH : DRAWER_WIDTH;
 
@@ -118,6 +127,17 @@ export default function AppLayout() {
             width: drawerWidth,
             boxSizing: "border-box",
             overflowX: "hidden",
+            overflowY: "auto",
+            // Pinned to the viewport (not normal document flow) so it
+            // stays put while a tall page (e.g. Insights) scrolls the main
+            // content — without this, the sidebar scrolled away with the
+            // body while the fixed AppBar stayed put, and the drawer's own
+            // top edge only reads as "starting below the header" because
+            // the AppBar's higher zIndex covers this fixed panel's top
+            // Toolbar-height sliver, not because it's laid out below it.
+            position: "fixed",
+            top: 0,
+            height: "100vh",
             transition: (t) => t.transitions.create("width", { duration: t.transitions.duration.shortest }),
           },
         }}
@@ -133,8 +153,8 @@ export default function AppLayout() {
         </Box>
 
         <List sx={{ px: 1 }}>
-          {items.map(({ label, to, icon: Icon, exact }) => {
-            const selected = exact ? location.pathname === to : location.pathname.startsWith(to);
+          {items.map(({ label, to, icon: Icon }) => {
+            const selected = to === activeTo;
             const button = (
               <ListItemButton
                 key={to}
