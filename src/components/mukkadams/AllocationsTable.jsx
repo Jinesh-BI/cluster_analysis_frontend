@@ -6,10 +6,12 @@
 // have no server-side filter, so those are applied client-side over
 // whatever from_date already narrowed down.
 import { useEffect, useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { Alert, Box, Chip, MenuItem, Select, Stack, TextField, Typography } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { mukkadamIntegrationApi } from "../../api/mukkadamIntegrationClient";
 import { formatCurrency } from "../../utils/format";
+import { track } from "../../analytics/track";
 import {
   ALL,
   PAYMENT_STATUS_COLOR,
@@ -77,6 +79,7 @@ const columns = [
 ];
 
 export default function AllocationsTable({ mukkadamId }) {
+  const posthog = usePostHog();
   const [fromDate, setFromDate] = useState("");
   const [appliedFromDate, setAppliedFromDate] = useState(null);
   const [rows, setRows] = useState([]);
@@ -133,11 +136,22 @@ export default function AllocationsTable({ mukkadamId }) {
           size="small"
           label="From date"
           value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
+          onChange={(e) => {
+            setFromDate(e.target.value);
+            track(posthog, "allocations_filter_applied", { mukkadam_id: mukkadamId, filter: "from_date" });
+          }}
           slotProps={{ inputLabel: { shrink: true } }}
           sx={{ minWidth: 170 }}
         />
-        <Select size="small" value={activityFilter} onChange={(e) => setActivityFilter(e.target.value)} sx={{ minWidth: 150 }}>
+        <Select
+          size="small"
+          value={activityFilter}
+          onChange={(e) => {
+            setActivityFilter(e.target.value);
+            track(posthog, "allocations_filter_applied", { mukkadam_id: mukkadamId, filter: "activity" });
+          }}
+          sx={{ minWidth: 150 }}
+        >
           <MenuItem value={ALL}>All activities</MenuItem>
           {activityOptions.map((v) => (
             <MenuItem key={v} value={v}>
@@ -145,7 +159,15 @@ export default function AllocationsTable({ mukkadamId }) {
             </MenuItem>
           ))}
         </Select>
-        <Select size="small" value={workStatusFilter} onChange={(e) => setWorkStatusFilter(e.target.value)} sx={{ minWidth: 150 }}>
+        <Select
+          size="small"
+          value={workStatusFilter}
+          onChange={(e) => {
+            setWorkStatusFilter(e.target.value);
+            track(posthog, "allocations_filter_applied", { mukkadam_id: mukkadamId, filter: "work_status", value: e.target.value });
+          }}
+          sx={{ minWidth: 150 }}
+        >
           <MenuItem value={ALL}>All work status</MenuItem>
           {WORK_STATUS_OPTIONS.map((v) => (
             <MenuItem key={v} value={v}>
@@ -153,7 +175,15 @@ export default function AllocationsTable({ mukkadamId }) {
             </MenuItem>
           ))}
         </Select>
-        <Select size="small" value={varietyFilter} onChange={(e) => setVarietyFilter(e.target.value)} sx={{ minWidth: 150 }}>
+        <Select
+          size="small"
+          value={varietyFilter}
+          onChange={(e) => {
+            setVarietyFilter(e.target.value);
+            track(posthog, "allocations_filter_applied", { mukkadam_id: mukkadamId, filter: "variety" });
+          }}
+          sx={{ minWidth: 150 }}
+        >
           <MenuItem value={ALL}>All varieties</MenuItem>
           {varietyOptions.map((v) => (
             <MenuItem key={v} value={v}>
@@ -181,6 +211,7 @@ export default function AllocationsTable({ mukkadamId }) {
             disableRowSelectionOnClick
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
             pageSizeOptions={[25, 50, 100]}
+            onPaginationModelChange={(model) => track(posthog, "allocations_page_changed", { mukkadam_id: mukkadamId, page: model.page, page_size: model.pageSize })}
             sx={TABLE_GRID_SX}
           />
         </Box>

@@ -7,6 +7,8 @@
 // sorted into sections here.
 
 import { useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
+import { track, useDebouncedTrack } from "../analytics/track";
 
 const GROUP_OPTIONS = [
   { key: "plot", label: "By plot" },
@@ -64,9 +66,12 @@ function SplitBar({ pieces }) {
 }
 
 export default function BlockList({ blocks, activeBlockId, onSelectBlock, activePlotIds }) {
+  const posthog = usePostHog();
   const [groupBy, setGroupBy] = useState("plot");
   const [query, setQuery] = useState("");
   const [onlyUnscheduled, setOnlyUnscheduled] = useState(false);
+
+  useDebouncedTrack(posthog, "block_search_applied", query);
 
   const activePlotIdSet = useMemo(() => new Set((activePlotIds || []).map(String)), [activePlotIds]);
 
@@ -123,7 +128,10 @@ export default function BlockList({ blocks, activeBlockId, onSelectBlock, active
             <button
               key={opt.key}
               className={`btn ${groupBy === opt.key ? "btn-primary" : ""}`}
-              onClick={() => setGroupBy(opt.key)}
+              onClick={() => {
+                setGroupBy(opt.key);
+                track(posthog, "block_grouping_changed", { group_by: opt.key });
+              }}
             >
               {opt.label}
             </button>
@@ -133,7 +141,10 @@ export default function BlockList({ blocks, activeBlockId, onSelectBlock, active
           <input
             type="checkbox"
             checked={onlyUnscheduled}
-            onChange={(e) => setOnlyUnscheduled(e.target.checked)}
+            onChange={(e) => {
+              setOnlyUnscheduled(e.target.checked);
+              track(posthog, "block_unscheduled_filter_toggled", { enabled: e.target.checked });
+            }}
           />
           Only show what still needs a day
         </label>
@@ -163,7 +174,10 @@ export default function BlockList({ blocks, activeBlockId, onSelectBlock, active
                     className={`block-item ${b.completed ? "block-item--completed " : ""}${
                       isUnscheduled ? "block-item--unscheduled " : ""
                     }${activeBlockId === b.activity_id ? "block-item--active" : ""}`}
-                    onClick={() => onSelectBlock(b.activity_id)}
+                    onClick={() => {
+                      track(posthog, "block_card_selected", { activity_id: b.activity_id, group_by: groupBy });
+                      onSelectBlock(b.activity_id);
+                    }}
                   >
                     <span className="block-item__name">{b.activity_name || "Unnamed activity"}</span>
                     <span className="muted">

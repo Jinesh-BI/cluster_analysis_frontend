@@ -7,13 +7,23 @@
 // the mukkadam."
 
 import { useEffect, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../api/client";
 import { formatCurrency } from "../utils/format";
+import { track } from "../analytics/track";
 
 export default function ClusterVault({ clusterId, deployed }) {
+  const posthog = usePostHog();
   const [vault, setVault] = useState(null); // { farmers, total_balance, overdue_count }
   const [error, setError] = useState(null);
   const [openFarmerId, setOpenFarmerId] = useState(null);
+
+  function handleToggleFarmer(farmerId) {
+    if (openFarmerId !== farmerId) {
+      track(posthog, "vault_farmer_expanded", { cluster_id: clusterId, farmer_id: farmerId });
+    }
+    setOpenFarmerId(openFarmerId === farmerId ? null : farmerId);
+  }
 
   useEffect(() => {
     setVault(null);
@@ -56,7 +66,7 @@ export default function ClusterVault({ clusterId, deployed }) {
           <div key={f.farmer_id} className="vault-farmer">
             <button
               className="vault-farmer__toggle"
-              onClick={() => setOpenFarmerId(open ? null : f.farmer_id)}
+              onClick={() => handleToggleFarmer(f.farmer_id)}
             >
               <span>{f.farmer_name}</span>
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>

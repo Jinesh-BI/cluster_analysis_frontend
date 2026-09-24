@@ -18,8 +18,10 @@
 // early_released/released/matured/no-ledger-yet all show the same
 // disabled "—" ReleaseEarlyAction already renders for ineligible rows).
 import { useEffect, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { Box, Chip, Divider, Stack, Typography } from "@mui/material";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
+import { track } from "../../../analytics/track";
 import { useAuth } from "../../../context/AuthContext";
 import { formatCurrency } from "../../../utils/format";
 import { TABLE_BOX_SX, PAYMENT_STATUS_COLOR, ReleaseEarlyAction, WORK_STATUS_COLOR, pct, titleCase } from "../tableUtils";
@@ -224,10 +226,25 @@ function MukkadamDetailPane({ mukkadam, canReleaseEarly, onRequestRelease }) {
 }
 
 export default function MukkadamInsightsTable({ results, loading, onReleased }) {
+  const posthog = usePostHog();
   const { user } = useAuth();
   const canReleaseEarly = user?.role === "REGIONAL_MANAGER" || user?.role === "ADMIN";
   const [selectedId, setSelectedId] = useState(null);
   const [releaseTarget, setReleaseTarget] = useState(null); // { mukkadamId, ledgerId, amount } | null
+
+  function handleSelectMukkadam(mukkadamId) {
+    track(posthog, "mukkadam_breakdown_selected", { mukkadam_id: mukkadamId });
+    setSelectedId(mukkadamId);
+  }
+
+  function handleRequestRelease(target) {
+    track(posthog, "release_early_opened", {
+      mukkadam_id: target.mukkadamId,
+      ledger_id: target.ledgerId,
+      source: "insights_table",
+    });
+    setReleaseTarget(target);
+  }
 
   // Keep the selection valid as the result set changes underneath it
   // (new date/filter fetch) — fall back to the first mukkadam rather than
@@ -272,7 +289,7 @@ export default function MukkadamInsightsTable({ results, loading, onReleased }) 
               key={r.mukkadam_id}
               mukkadam={r}
               selected={r.mukkadam_id === selectedId}
-              onClick={() => setSelectedId(r.mukkadam_id)}
+              onClick={() => handleSelectMukkadam(r.mukkadam_id)}
             />
           ))}
         </Box>
@@ -282,7 +299,7 @@ export default function MukkadamInsightsTable({ results, loading, onReleased }) 
             <MukkadamDetailPane
               mukkadam={selected}
               canReleaseEarly={canReleaseEarly}
-              onRequestRelease={setReleaseTarget}
+              onRequestRelease={handleRequestRelease}
             />
           ) : (
             <Stack sx={{ alignItems: "center", justifyContent: "center", height: "100%", py: 6, color: "text.disabled" }}>
@@ -298,6 +315,7 @@ export default function MukkadamInsightsTable({ results, loading, onReleased }) 
         mukkadamId={releaseTarget?.mukkadamId}
         ledgerId={releaseTarget?.ledgerId}
         amount={releaseTarget?.amount}
+        source="insights_table"
         onClose={() => setReleaseTarget(null)}
         onReleased={() => {
           setReleaseTarget(null);

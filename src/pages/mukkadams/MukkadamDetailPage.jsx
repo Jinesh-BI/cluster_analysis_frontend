@@ -15,6 +15,7 @@
 // the Wallet balance card leads with the former and shows the latter as a
 // sub-metric, never the other way around.
 import { useEffect, useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
@@ -43,6 +44,7 @@ import PaymentsTable from "../../components/mukkadams/PaymentsTable";
 import LedgerTable from "../../components/mukkadams/LedgerTable";
 import MaturingTable from "../../components/mukkadams/MaturingTable";
 import { titleCase } from "../../components/mukkadams/tableUtils";
+import { track, trackGroup } from "../../analytics/track";
 
 const TABS = ["allocations", "payments", "maturing", "ledger"];
 
@@ -99,6 +101,7 @@ function SummaryCard({ icon: Icon, label, value, accent, caption, onClick, child
 }
 
 export default function MukkadamDetailPage() {
+  const posthog = usePostHog();
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -146,6 +149,7 @@ export default function MukkadamDetailPage() {
   }, [mukkadam, directoryContext]);
 
   function setTab(tab) {
+    track(posthog, "mukkadam_detail_tab_switched", { mukkadam_id: id, tab });
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set("tab", tab);
@@ -153,16 +157,30 @@ export default function MukkadamDetailPage() {
     });
   }
 
+  useEffect(() => {
+    if (mukkadam) trackGroup(posthog, "mukkadam", id, { name: mukkadam.mukkadam_name });
+  }, [posthog, id, mukkadam]);
+
+  function handleBack() {
+    track(posthog, "mukkadam_detail_back_clicked", { mukkadam_id: id });
+    navigate("/mukkadams");
+  }
+
+  function handleRetry() {
+    track(posthog, "mukkadam_detail_load_retry_clicked", { mukkadam_id: id });
+    load();
+  }
+
   if (error) {
     return (
       <Box className="page">
-        <IconButton onClick={() => navigate("/mukkadams")} aria-label="Back to directory" sx={{ mb: 1 }}>
+        <IconButton onClick={handleBack} aria-label="Back to directory" sx={{ mb: 1 }}>
           <ArrowBackIcon />
         </IconButton>
         <Alert
           severity="error"
           action={
-            <IconButton size="small" onClick={load} aria-label="Retry">
+            <IconButton size="small" onClick={handleRetry} aria-label="Retry">
               <RefreshOutlinedIcon fontSize="small" />
             </IconButton>
           }
@@ -176,7 +194,7 @@ export default function MukkadamDetailPage() {
   return (
     <Box className="page">
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 2 }}>
-        <IconButton onClick={() => navigate("/mukkadams")} aria-label="Back to directory">
+        <IconButton onClick={handleBack} aria-label="Back to directory">
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>

@@ -4,9 +4,11 @@
 // payment-overview response (payment-overview.payments), so this table
 // takes rows as a prop rather than fetching anything itself.
 import { useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { Box, Chip, MenuItem, Select, Stack, Typography } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import { formatCurrency } from "../../utils/format";
+import { track } from "../../analytics/track";
 import { ALL, TABLE_BOX_SX, TABLE_GRID_SX, formatDateTime, titleCase, useDistinctValues } from "./tableUtils";
 
 const STATUS_COLOR = {
@@ -67,6 +69,7 @@ const columns = [
 ];
 
 export default function PaymentsTable({ payments, loading }) {
+  const posthog = usePostHog();
   const [statusFilter, setStatusFilter] = useState(ALL);
   const [typeFilter, setTypeFilter] = useState(ALL);
 
@@ -87,7 +90,15 @@ export default function PaymentsTable({ payments, loading }) {
   return (
     <Box>
       <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2, alignItems: { md: "center" } }}>
-        <Select size="small" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} sx={{ minWidth: 150 }}>
+        <Select
+          size="small"
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            track(posthog, "payments_filter_applied", { filter: "status", value: e.target.value });
+          }}
+          sx={{ minWidth: 150 }}
+        >
           <MenuItem value={ALL}>All statuses</MenuItem>
           {statusOptions.map((v) => (
             <MenuItem key={v} value={v}>
@@ -95,7 +106,15 @@ export default function PaymentsTable({ payments, loading }) {
             </MenuItem>
           ))}
         </Select>
-        <Select size="small" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} sx={{ minWidth: 150 }}>
+        <Select
+          size="small"
+          value={typeFilter}
+          onChange={(e) => {
+            setTypeFilter(e.target.value);
+            track(posthog, "payments_filter_applied", { filter: "payment_type", value: e.target.value });
+          }}
+          sx={{ minWidth: 150 }}
+        >
           <MenuItem value={ALL}>All payment types</MenuItem>
           {typeOptions.map((v) => (
             <MenuItem key={v} value={v}>
@@ -118,6 +137,7 @@ export default function PaymentsTable({ payments, loading }) {
           disableRowSelectionOnClick
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           pageSizeOptions={[25, 50, 100]}
+          onPaginationModelChange={(model) => track(posthog, "payments_page_changed", { page: model.page, page_size: model.pageSize })}
           sx={TABLE_GRID_SX}
         />
       </Box>

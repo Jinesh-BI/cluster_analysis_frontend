@@ -8,6 +8,7 @@
 // have that icon disabled rather than removed, so the column stays
 // scannable.
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { useNavigate } from "react-router-dom";
 import {
   Alert,
@@ -28,6 +29,7 @@ import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlin
 import { mukkadamIntegrationApi } from "../../api/mukkadamIntegrationClient";
 import MukkadamBankDetailsDrawer from "../../components/mukkadams/MukkadamBankDetailsDrawer";
 import { TABLE_BOX_SX, TABLE_GRID_SX } from "../../components/mukkadams/tableUtils";
+import { track, useDebouncedTrack } from "../../analytics/track";
 
 const ALL = "all";
 
@@ -130,6 +132,7 @@ const columns = [
 ];
 
 export default function MukkadamsListPage() {
+  const posthog = usePostHog();
   const navigate = useNavigate();
   const [directory, setDirectory] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -140,6 +143,8 @@ export default function MukkadamsListPage() {
   const [manualStatus, setManualStatus] = useState(ALL);
   const [isTenderSigned, setIsTenderSigned] = useState(ALL);
   const [selectedMukkadam, setSelectedMukkadam] = useState(null);
+
+  useDebouncedTrack(posthog, "mukkadams_directory_search_applied", q);
 
   useEffect(() => {
     let ignore = false;
@@ -172,8 +177,14 @@ export default function MukkadamsListPage() {
     };
   }, [deferredQ, isPermanent, manualStatus, isTenderSigned]);
 
+  function handleViewBank(row) {
+    track(posthog, "mukkadam_bank_details_opened", { mukkadam_id: row.mukkadam_id });
+    setSelectedMukkadam(row);
+  }
+
   const columnsWithHandler = useMemo(
-    () => columns.map((col) => (col.field === "has_bank_account" ? { ...col, onViewBank: setSelectedMukkadam } : col)),
+    () => columns.map((col) => (col.field === "has_bank_account" ? { ...col, onViewBank: handleViewBank } : col)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -200,21 +211,42 @@ export default function MukkadamsListPage() {
             },
           }}
         />
-        <Select size="small" value={isPermanent} onChange={(e) => setIsPermanent(e.target.value)}>
+        <Select
+          size="small"
+          value={isPermanent}
+          onChange={(e) => {
+            setIsPermanent(e.target.value);
+            track(posthog, "mukkadams_directory_filter_applied", { filter: "team_type", value: e.target.value });
+          }}
+        >
           {TEAM_TYPE_OPTIONS.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
               {opt.label}
             </MenuItem>
           ))}
         </Select>
-        <Select size="small" value={manualStatus} onChange={(e) => setManualStatus(e.target.value)}>
+        <Select
+          size="small"
+          value={manualStatus}
+          onChange={(e) => {
+            setManualStatus(e.target.value);
+            track(posthog, "mukkadams_directory_filter_applied", { filter: "status", value: e.target.value });
+          }}
+        >
           {STATUS_OPTIONS.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
               {opt.label}
             </MenuItem>
           ))}
         </Select>
-        <Select size="small" value={isTenderSigned} onChange={(e) => setIsTenderSigned(e.target.value)}>
+        <Select
+          size="small"
+          value={isTenderSigned}
+          onChange={(e) => {
+            setIsTenderSigned(e.target.value);
+            track(posthog, "mukkadams_directory_filter_applied", { filter: "tender_signed", value: e.target.value });
+          }}
+        >
           {TENDER_SIGNED_OPTIONS.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -234,9 +266,13 @@ export default function MukkadamsListPage() {
             loading={loading}
             getRowId={(row) => row.mukkadam_id}
             disableRowSelectionOnClick
-            onRowClick={(params) => navigate(`/mukkadams/${params.row.mukkadam_id}`, { state: { mukkadam: params.row } })}
+            onRowClick={(params) => {
+              track(posthog, "mukkadam_row_clicked", { mukkadam_id: params.row.mukkadam_id });
+              navigate(`/mukkadams/${params.row.mukkadam_id}`, { state: { mukkadam: params.row } });
+            }}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
             pageSizeOptions={[25, 50, 100]}
+            onPaginationModelChange={(model) => track(posthog, "mukkadams_directory_page_changed", { page: model.page, page_size: model.pageSize })}
             sx={{
               ...TABLE_GRID_SX,
               "& .MuiDataGrid-row": { ...TABLE_GRID_SX["& .MuiDataGrid-row"], cursor: "pointer" },

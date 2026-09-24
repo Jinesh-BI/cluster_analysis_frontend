@@ -1,6 +1,9 @@
 // src/pages/ClusterDetailPage.jsx
 import { useEffect, useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { useParams, Link } from "react-router-dom";
+import { analyticsLogger } from "../analytics/logger";
+import { track, trackException, trackGroup } from "../analytics/track";
 import { api } from "../api/client";
 import { opsApi } from "../api/opsClient";
 import Calendar from "../components/Calendar";
@@ -21,8 +24,9 @@ import { holidayDateMap } from "../utils/dates";
 const CALENDAR_CELL_SIZE = 20;
 
 export default function ClusterDetailPage() {
+  const posthog = usePostHog();
   const { id } = useParams();
-  const { isManagerTier } = useAuth();
+  const { isManagerTier, user } = useAuth();
 
   const [cluster, setCluster] = useState(null);
   const [calendar, setCalendar] = useState(null);
@@ -55,10 +59,17 @@ export default function ClusterDetailPage() {
     setError(null);
     try {
       await api.addClusterHoliday(id, holidayForm);
+      track(posthog, "cluster_holiday_added", {
+        cluster_id: id,
+        actor_role: user?.role,
+        spans_multiple_days: holidayForm.start_date !== holidayForm.end_date,
+      });
       setHolidayForm({ label: "", start_date: "", end_date: "" });
       setShowHolidayForm(false);
       api.getClusterHolidays(id).then(setHolidays).catch((e) => setError(e.message));
     } catch (e) {
+      trackException(posthog, e);
+      track(posthog, "cluster_holiday_add_failed", { cluster_id: id });
       setError(e.message);
     } finally {
       setSavingHoliday(false);
@@ -148,8 +159,30 @@ export default function ClusterDetailPage() {
     setError(null);
     try {
       const updated = await api.deployCluster(id);
+      trackGroup(posthog, "cluster", id, {
+        name: updated.name,
+        farmer_count: updated.farmer_count,
+        total_acres: updated.total_acres,
+      });
+      track(posthog, "cluster_started", {
+        cluster_id: id,
+        actor_role: user?.role,
+        farmer_count: updated.farmer_count,
+        total_acres: updated.total_acres,
+      });
+      analyticsLogger.info("cluster deployment completed", {
+        outcome: "success",
+        cluster_id: id,
+        farmer_count: updated.farmer_count,
+      });
       setCluster(updated);
     } catch (e) {
+      trackException(posthog, e);
+      analyticsLogger.error("cluster deployment completed", {
+        outcome: "failure",
+        cluster_id: id,
+        error_type: e?.name || "Error",
+      });
       setError(e.message);
     } finally {
       setDeploying(false);
@@ -161,12 +194,19 @@ export default function ClusterDetailPage() {
     setError(null);
     try {
       await api.assignCluster(id, manager.id);
+      track(posthog, "cluster_assigned", {
+        cluster_id: id,
+        manager_id: manager.id,
+        actor_role: user?.role,
+      });
       setAssignedTo(manager.username);
       setManagers(null);
       // Refetch so the "currently assigned to" chain below reflects
       // this assignment immediately, not just on next page load.
       api.getCluster(id).then(setCluster).catch((e) => setError(e.message));
     } catch (e) {
+      trackException(posthog, e);
+      track(posthog, "cluster_assign_failed", { cluster_id: id });
       setError(e.message);
     } finally {
       setAssigning(false);
@@ -363,7 +403,11 @@ export default function ClusterDetailPage() {
           <button className="btn" onClick={() => setShowHolidayForm((v) => !v)}>
             {showHolidayForm ? "Cancel" : "Add holiday"}
           </button>
-          <Link to={`/clusters/${id}/playground`} className="btn btn-primary">
+          <Link
+            to={`/clusters/${id}/playground`}
+            className="btn btn-primary"
+            onClick={() => track(posthog, "cluster_playground_opened", { cluster_id: id, actor_role: user?.role })}
+          >
             Open planning playground
           </Link>
         </div>
