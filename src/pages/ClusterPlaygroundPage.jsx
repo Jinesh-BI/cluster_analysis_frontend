@@ -13,8 +13,10 @@
 // — none of those are wired to working API/UI in this codebase today.
 
 import { useEffect, useMemo, useRef, useState, useReducer } from "react";
+import { usePostHog } from "@posthog/react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../api/client";
+import { track, trackException, trackGroup, useDebouncedTrack } from "../analytics/track";
 import PlaygroundCalendar from "../components/PlaygroundCalendar";
 import FillRateDetail from "../components/FillRateDetail";
 import { EmptyState, ErrorState, LoadingState } from "../components/FeedbackStates";
@@ -333,6 +335,7 @@ function PlanningActivityRow({
   dayAllocationsLoading,
   disabledReason,
 }) {
+  const posthog = usePostHog();
   const [open, setOpen] = useState(false);
   const [pickedMukkadamId, setPickedMukkadamId] = useState("");
   const [pickedPercent, setPickedPercent] = useState(null);
@@ -357,6 +360,7 @@ function PlanningActivityRow({
     const result = await onAllocateMukkadam(block.activity_id, date, mukkadam, percent);
     setSaving(false);
     if (result?.ok) {
+      track(posthog, "mukkadam_allocated_in_planner", { activity_id: block.activity_id, mukkadam_id: mukkadam.mukkadam_id, percent });
       setPickedMukkadamId("");
       setPickedPercent(null);
     } else {
@@ -370,7 +374,9 @@ function PlanningActivityRow({
     setFormError(null);
     const result = await onUnassignMukkadam(date, allocationId);
     setRemovingId(null);
-    if (!result?.ok) {
+    if (result?.ok) {
+      track(posthog, "mukkadam_unassigned_in_planner", { activity_id: block.activity_id, allocation_id: allocationId });
+    } else {
       setFormError(result?.error || "Could not remove this allocation.");
     }
   }
@@ -628,6 +634,7 @@ function PlotRow({
   onReset,
   onDone,
 }) {
+  const posthog = usePostHog();
   const { plotId, blocks, acres, variety, said, want, shift } = plot;
   const moved = shift !== 0;
   const mag = Math.abs(shift);
@@ -667,6 +674,11 @@ function PlotRow({
       const proceed = window.confirm(`${date} is a holiday (${holidayLabel}). Place it here anyway?`);
       if (!proceed) return;
     }
+    track(posthog, "plot_date_committed", {
+      plot_id: plotId,
+      partial_move: Boolean(target && activePiece && movePercent < activePiece.percent),
+      is_holiday: Boolean(holidayLabel),
+    });
     if (target && activePiece && movePercent < activePiece.percent) {
       onPieceAction(target, activePiece.piece_id, movePercent, date);
     } else {
@@ -908,7 +920,13 @@ function PlotRow({
               <button type="button" className="plot-edit-actions__primary" onClick={onDone}>
                 Save
               </button>
-              <button type="button" onClick={onReset}>
+              <button
+                type="button"
+                onClick={() => {
+                  track(posthog, "plot_reset_to_original_clicked", { plot_id: plotId });
+                  onReset();
+                }}
+              >
                 {moved ? `Back to ${formatPlanDate(said)}` : "Their date"}
               </button>
             </div>
@@ -948,8 +966,11 @@ function PlanningWorkbench({
   dayAllocationsLoading,
   hasUnsavedChanges,
 }) {
+  const posthog = usePostHog();
   const [planMode, setPlanMode] = useState("new");
   const [activitySearch, setActivitySearch] = useState("");
+
+  useDebouncedTrack(posthog, "planner_activity_search_applied", activitySearch);
   const [editingPlot, setEditingPlot] = useState(null);
   const [hoverDate, setHoverDate] = useState(null);
   const [editMonth, setEditMonth] = useState(0);
@@ -995,7 +1016,10 @@ function PlanningWorkbench({
         <button
           type="button"
           className={`planner-tab ${!isNewPlan ? "planner-tab--active" : ""}`}
-          onClick={() => setPlanMode("default")}
+          onClick={() => {
+            track(posthog, "plan_mode_switched", { mode: "default" });
+            setPlanMode("default");
+          }}
         >
           <span>Default</span>
           <small>Existing calendar</small>
@@ -1003,7 +1027,10 @@ function PlanningWorkbench({
         <button
           type="button"
           className={`planner-tab ${isNewPlan ? "planner-tab--active" : ""}`}
-          onClick={() => setPlanMode("new")}
+          onClick={() => {
+            track(posthog, "plan_mode_switched", { mode: "new" });
+            setPlanMode("new");
+          }}
         >
           <span>New</span>
           <small>Create new dates</small>
@@ -1251,7 +1278,10 @@ function PlanningWorkbench({
                       key={block.activity_id}
                       type="button"
                       className="risk-row risk-row--late"
-                      onClick={() => onSelectDay(effectiveDate(block))}
+                      onClick={() => {
+                        track(posthog, "late_start_row_clicked", { activity_id: block.activity_id, days_late: daysLate });
+                        onSelectDay(effectiveDate(block));
+                      }}
                     >
                       <span />
                       <strong>{block.activity_name || "Unnamed activity"}</strong>
@@ -1279,7 +1309,15 @@ function PlanningWorkbench({
                   idleRanges.map((range) => {
                     const days = diffDays(range.start, range.end) + 1;
                     return (
-                      <button key={range.start} type="button" className="idle-row" onClick={() => onSelectDay(range.start)}>
+                      <button
+                        key={range.start}
+                        type="button"
+                        className="idle-row"
+                        onClick={() => {
+                          track(posthog, "idle_window_row_clicked", { start: range.start, days });
+                          onSelectDay(range.start);
+                        }}
+                      >
                         <strong>{days > 1 ? `${formatPlanDate(range.start)} – ${formatPlanDate(range.end)}` : formatPlanDate(range.start)}</strong>
                         <span>
                           {days} day{days === 1 ? "" : "s"}
@@ -1301,6 +1339,7 @@ function PlanningWorkbench({
 }
 
 export default function ClusterPlaygroundPageV2() {
+  const posthog = usePostHog();
   const { id } = useParams();
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
@@ -1345,6 +1384,7 @@ export default function ClusterPlaygroundPageV2() {
     setFeatureUnavailable(false);
     setSelectedDay(null);
 
+    trackGroup(posthog, "cluster", id, {});
     api.getCluster(id).then(setCluster).catch((e) => setError(e.message));
     api.getCalendar(id).then(setReferenceCalendar).catch((e) => setError(e.message));
     api.getClusterHolidays(id).then(setHolidays).catch((e) => setError(e.message));
@@ -1598,6 +1638,7 @@ export default function ClusterPlaygroundPageV2() {
       `Unschedule all ${eligible.length} non-completed ${eligible.length === 1 ? "activity" : "activities"}? This clears their placed dates so you can plan the calendar from scratch. Completed activities are never touched.`
     );
     if (!ok) return;
+    track(posthog, "unschedule_all_clicked", { cluster_id: id, activity_count: eligible.length });
     dispatch({ type: "UNSCHEDULE_ALL" });
     setHasUnsavedChanges(true);
   }
@@ -1616,10 +1657,13 @@ export default function ClusterPlaygroundPageV2() {
     setSaveError(null);
     try {
       const saved = await api.saveClusterSchedule(id, payload);
+      track(posthog, "save_plan_clicked", { cluster_id: id, activity_count: payload.length });
       setScheduleInfo(saved);
       setHasUnsavedChanges(false);
       api.getCalendar(id).then(setReferenceCalendar).catch((e) => setError(e.message));
     } catch (e) {
+      trackException(posthog, e);
+      track(posthog, "save_plan_failed", { cluster_id: id });
       setSaveError(e.message);
     } finally {
       setSaving(false);
@@ -1663,8 +1707,11 @@ export default function ClusterPlaygroundPageV2() {
     setPublishError(null);
     try {
       const published = await api.publishClusterSchedule(id);
+      track(posthog, "publish_calendar_clicked", { cluster_id: id, actor_role: user?.role });
       setScheduleInfo(published);
     } catch (e) {
+      trackException(posthog, e);
+      track(posthog, "publish_calendar_failed", { cluster_id: id });
       setPublishError(e.message);
     } finally {
       setPublishing(false);
@@ -1728,7 +1775,15 @@ export default function ClusterPlaygroundPageV2() {
             <div className="cluster-card__meta">{scheduleStatusText}</div>
             {scheduleInfo?.edits?.length > 0 && (
               <>
-                <button className="btn" type="button" style={{ marginTop: 6 }} onClick={() => setShowHistory((v) => !v)}>
+                <button
+                  className="btn"
+                  type="button"
+                  style={{ marginTop: 6 }}
+                  onClick={() => {
+                    track(posthog, "edit_history_toggled", { cluster_id: id, expanded: !showHistory });
+                    setShowHistory((v) => !v);
+                  }}
+                >
                   {showHistory ? "Hide" : "Show"} edit history ({scheduleInfo.edits.length})
                 </button>
                 {showHistory && (

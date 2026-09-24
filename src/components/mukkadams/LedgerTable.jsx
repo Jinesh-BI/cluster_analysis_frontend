@@ -6,11 +6,13 @@
 // as a CTA button, since it's the one with a real (mutating) endpoint,
 // opsApi.releaseLedgerEntryEarly — REGIONAL_MANAGER only; see ReleaseEarlyModal.
 import { useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { Box, Chip, MenuItem, Select, Stack, Typography } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import { formatCurrency } from "../../utils/format";
+import { track } from "../../analytics/track";
 import { useAuth } from "../../context/AuthContext";
 import { ALL, ReleaseEarlyAction, TABLE_BOX_SX, TABLE_GRID_SX, formatDateTime, titleCase, useDistinctValues } from "./tableUtils";
 import ReleaseEarlyModal from "./ReleaseEarlyModal";
@@ -87,11 +89,17 @@ const columns = [
 ];
 
 export default function LedgerTable({ ledger, loading, mukkadamId, onReleased }) {
+  const posthog = usePostHog();
   const { user } = useAuth();
   const canReleaseEarly = user?.role === "REGIONAL_MANAGER" || user?.role === "ADMIN";
   const [entryTypeFilter, setEntryTypeFilter] = useState(ALL);
   const [typeFilter, setTypeFilter] = useState(ALL);
   const [releaseTarget, setReleaseTarget] = useState(null); // the ledger row being released, or null
+
+  function handleRequestRelease(row) {
+    track(posthog, "release_early_opened", { mukkadam_id: mukkadamId, ledger_id: row.id, source: "ledger_table" });
+    setReleaseTarget(row);
+  }
 
   const rows = ledger ?? [];
   const entryTypeOptions = useDistinctValues(rows, "entry_type");
@@ -117,18 +125,27 @@ export default function LedgerTable({ ledger, loading, mukkadamId, onReleased })
         renderCell: (params) => (
           <ReleaseEarlyAction
             actions={params.value}
-            onClick={canReleaseEarly ? () => setReleaseTarget(params.row) : undefined}
+            onClick={canReleaseEarly ? () => handleRequestRelease(params.row) : undefined}
           />
         ),
       },
     ],
-    [canReleaseEarly],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canReleaseEarly, mukkadamId],
   );
 
   return (
     <Box>
       <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2, alignItems: { md: "center" } }}>
-        <Select size="small" value={entryTypeFilter} onChange={(e) => setEntryTypeFilter(e.target.value)} sx={{ minWidth: 160 }}>
+        <Select
+          size="small"
+          value={entryTypeFilter}
+          onChange={(e) => {
+            setEntryTypeFilter(e.target.value);
+            track(posthog, "ledger_filter_applied", { filter: "entry_type", value: e.target.value });
+          }}
+          sx={{ minWidth: 160 }}
+        >
           <MenuItem value={ALL}>All entry types</MenuItem>
           {entryTypeOptions.map((v) => (
             <MenuItem key={v} value={v}>
@@ -136,7 +153,15 @@ export default function LedgerTable({ ledger, loading, mukkadamId, onReleased })
             </MenuItem>
           ))}
         </Select>
-        <Select size="small" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} sx={{ minWidth: 140 }}>
+        <Select
+          size="small"
+          value={typeFilter}
+          onChange={(e) => {
+            setTypeFilter(e.target.value);
+            track(posthog, "ledger_filter_applied", { filter: "type", value: e.target.value });
+          }}
+          sx={{ minWidth: 140 }}
+        >
           <MenuItem value={ALL}>Credit &amp; debit</MenuItem>
           <MenuItem value="CREDIT">Credit only</MenuItem>
           <MenuItem value="DEBIT">Debit only</MenuItem>
@@ -156,6 +181,7 @@ export default function LedgerTable({ ledger, loading, mukkadamId, onReleased })
           disableRowSelectionOnClick
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           pageSizeOptions={[25, 50, 100]}
+          onPaginationModelChange={(model) => track(posthog, "ledger_page_changed", { page: model.page, page_size: model.pageSize })}
           sx={TABLE_GRID_SX}
         />
       </Box>
@@ -165,6 +191,7 @@ export default function LedgerTable({ ledger, loading, mukkadamId, onReleased })
         mukkadamId={mukkadamId}
         ledgerId={releaseTarget?.id}
         amount={releaseTarget?.amount}
+        source="ledger_table"
         onClose={() => setReleaseTarget(null)}
         onReleased={() => {
           setReleaseTarget(null);

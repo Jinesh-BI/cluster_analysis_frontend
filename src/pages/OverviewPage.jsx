@@ -1,5 +1,6 @@
 // src/pages/OverviewPage.jsx
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { Box, Chip, IconButton, InputAdornment, MenuItem, Select, Stack, TextField, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
@@ -11,8 +12,10 @@ import DelegationOverview from "../components/DelegationOverview";
 import MukkadamJobsBoard from "../components/MukkadamJobsBoard";
 import MukkadamStatsTiles from "../components/mukkadams/MukkadamStatsTiles";
 import { useAuth } from "../context/AuthContext";
+import { track, useDebouncedTrack } from "../analytics/track";
 
 export default function OverviewPage() {
+  const posthog = usePostHog();
   const [clusters, setClusters] = useState(null);
   const [error, setError] = useState(null);
   const [oms, setOms] = useState(null);
@@ -20,6 +23,8 @@ export default function OverviewPage() {
   const [clusterQuery, setClusterQuery] = useState("");
   const deferredClusterQuery = useDeferredValue(clusterQuery);
   const { user, isManagerTier } = useAuth();
+
+  useDebouncedTrack(posthog, "overview_cluster_search_applied", clusterQuery);
 
   // Client-side name filter layered on top of the server-side OM filter —
   // doesn't touch `clusters` itself, so nothing else that reads it
@@ -82,7 +87,10 @@ export default function OverviewPage() {
               size="small"
               displayEmpty
               value={omFilter}
-              onChange={(e) => setOmFilter(e.target.value)}
+              onChange={(e) => {
+                setOmFilter(e.target.value);
+                track(posthog, "overview_om_filter_applied", { has_filter: Boolean(e.target.value) });
+              }}
               aria-label="Filter by OM"
               sx={{ minWidth: { sm: 190 } }}
               renderValue={(value) => {
@@ -119,7 +127,14 @@ export default function OverviewPage() {
                 ),
                 endAdornment: clusterQuery && (
                   <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setClusterQuery("")} aria-label="Clear search">
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        track(posthog, "overview_cluster_search_cleared");
+                        setClusterQuery("");
+                      }}
+                      aria-label="Clear search"
+                    >
                       <ClearIcon fontSize="small" />
                     </IconButton>
                   </InputAdornment>

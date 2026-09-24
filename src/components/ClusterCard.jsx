@@ -1,5 +1,7 @@
 // src/components/ClusterCard.jsx
+import { usePostHog } from "@posthog/react";
 import { Link } from "react-router-dom";
+import { track } from "../analytics/track";
 
 // "OM" is the display label for what the backend still calls
 // ASSISTANT_REGIONAL_MANAGER (assignment_chain.assistant_manager) —
@@ -17,12 +19,14 @@ function ManagerTag({ label, name, unassignedText, unassignedCls }) {
 }
 
 export default function ClusterCard({ cluster }) {
+  const posthog = usePostHog();
   const chain = cluster.assignment_chain || {};
 
   return (
     <Link
       to={`/clusters/${cluster.id}`}
       className={`cluster-card ${cluster.deployed ? "cluster-card--deployed" : ""}`}
+      onClick={() => track(posthog, "cluster_card_clicked", { cluster_id: cluster.id, deployed: cluster.deployed })}
     >
       <div>
         <div className="cluster-card__title-row">

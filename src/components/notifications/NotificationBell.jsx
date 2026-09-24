@@ -6,6 +6,7 @@
 // (e.g. release early). Unread state is per-user (read_by.name === my
 // username), computed by the hook, not the feed's own shared `is_read`.
 import { useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { useNavigate } from "react-router-dom";
 import {
   Badge,
@@ -24,12 +25,14 @@ import NotificationsActiveOutlinedIcon from "@mui/icons-material/NotificationsAc
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import { formatCurrency } from "../../utils/format";
 import { formatRelativeTime } from "../../utils/relativeTime";
+import { track } from "../../analytics/track";
 
 function NotificationItem({ notification, read, onOpen }) {
   const payload = notification.message_payload || {};
   return (
     <Box
       onClick={() => onOpen(notification)}
+      className="ph-no-capture"
       sx={{
         display: "flex",
         gap: 1.25,
@@ -69,6 +72,7 @@ function NotificationItem({ notification, read, onOpen }) {
 }
 
 export default function NotificationBell({ notifications, unreadCount, isReadByMe, markAsRead }) {
+  const posthog = usePostHog();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -77,19 +81,27 @@ export default function NotificationBell({ notifications, unreadCount, isReadByM
     setAnchorEl(null);
     if (!isReadByMe(notification)) markAsRead([notification.id]);
     const mukkadamId = notification.mukkadam_id ?? notification.message_payload?.mukkadam_id;
+    track(posthog, "notification_opened", { notification_id: notification.id, mukkadam_id: mukkadamId });
     if (mukkadamId) navigate(`/mukkadams/${mukkadamId}?tab=ledger`);
   }
 
   function handleMarkAllRead(e) {
     e.stopPropagation();
-    markAsRead(notifications.filter((n) => !isReadByMe(n)).map((n) => n.id));
+    const ids = notifications.filter((n) => !isReadByMe(n)).map((n) => n.id);
+    track(posthog, "notifications_mark_all_read_clicked", { count: ids.length });
+    markAsRead(ids);
+  }
+
+  function handleOpenBell(e) {
+    track(posthog, "notification_bell_opened", { unread_count: unreadCount });
+    setAnchorEl(e.currentTarget);
   }
 
   return (
     <>
       <Tooltip title="Notifications">
         <IconButton
-          onClick={(e) => setAnchorEl(e.currentTarget)}
+          onClick={handleOpenBell}
           aria-label="Notifications"
           sx={
             unreadCount > 0

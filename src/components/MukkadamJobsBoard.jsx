@@ -7,6 +7,7 @@
 // with no auth header and its own response envelope.
 
 import { useEffect, useMemo, useState, useDeferredValue } from "react";
+import { usePostHog } from "@posthog/react";
 import {
   Alert,
   Badge,
@@ -29,6 +30,7 @@ import PhotoLibraryOutlinedIcon from "@mui/icons-material/PhotoLibraryOutlined";
 import { localDateStr, shiftDateStr } from "../utils/dates";
 import { MukkadamJobImagesDialog } from "./MukkadamJobImagesDialog";
 import { tenderApi } from "../api/tenderClient";
+import { track, useDebouncedTrack } from "../analytics/track";
 
 const STATUS_TONE = {
   completed: "success",
@@ -275,6 +277,7 @@ const columns = [
 ];
 
 export default function MukkadamJobsBoard() {
+  const posthog = usePostHog();
   const [dateStr, setDateStr] = useState(() => localDateStr(0));
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -282,6 +285,8 @@ export default function MukkadamJobsBoard() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [imagesRow, setImagesRow] = useState(null);
+
+  useDebouncedTrack(posthog, "mukkadam_jobs_search_applied", search);
 
   useEffect(() => {
     let ignore = false;
@@ -354,7 +359,10 @@ export default function MukkadamJobsBoard() {
             <IconButton
               size="small"
               disabled={loading}
-              onClick={() => setDateStr((d) => shiftDateStr(d, -1))}
+              onClick={() => {
+                track(posthog, "mukkadam_jobs_date_changed", { mode: "previous_day" });
+                setDateStr((d) => shiftDateStr(d, -1));
+              }}
               aria-label="Previous day"
             >
               <ArrowBackIosNewIcon sx={{ fontSize: 14 }} />
@@ -365,7 +373,10 @@ export default function MukkadamJobsBoard() {
               size="small"
               value={dateStr}
               disabled={loading}
-              onChange={(e) => setDateStr(e.target.value)}
+              onChange={(e) => {
+                track(posthog, "mukkadam_jobs_date_changed", { mode: "manual" });
+                setDateStr(e.target.value);
+              }}
               slotProps={{ inputLabel: { shrink: true } }}
               sx={{ minWidth: 150 }}
             />
@@ -373,7 +384,10 @@ export default function MukkadamJobsBoard() {
             <IconButton
               size="small"
               disabled={loading}
-              onClick={() => setDateStr((d) => shiftDateStr(d, 1))}
+              onClick={() => {
+                track(posthog, "mukkadam_jobs_date_changed", { mode: "next_day" });
+                setDateStr((d) => shiftDateStr(d, 1));
+              }}
               aria-label="Next day"
             >
               <ArrowForwardIosIcon sx={{ fontSize: 14 }} />
@@ -386,7 +400,10 @@ export default function MukkadamJobsBoard() {
               color="secondary"
               variant={isToday ? "contained" : "outlined"}
               disabled={loading}
-              onClick={() => setDateStr(localDateStr(0))}
+              onClick={() => {
+                track(posthog, "mukkadam_jobs_date_changed", { mode: "today" });
+                setDateStr(localDateStr(0));
+              }}
             >
               Today
             </Button>
@@ -395,7 +412,10 @@ export default function MukkadamJobsBoard() {
               color="secondary"
               variant={isTomorrow ? "contained" : "outlined"}
               disabled={loading}
-              onClick={() => setDateStr(localDateStr(1))}
+              onClick={() => {
+                track(posthog, "mukkadam_jobs_date_changed", { mode: "tomorrow" });
+                setDateStr(localDateStr(1));
+              }}
             >
               Tomorrow
             </Button>
@@ -448,11 +468,16 @@ export default function MukkadamJobsBoard() {
               getRowId={(row) => row.allocation_id}
               onCellClick={(params) => {
                 if (params.field === "images" && (params.row.images?.length ?? 0) > 0) {
+                  track(posthog, "mukkadam_job_evidence_opened", {
+                    allocation_id: params.row.allocation_id,
+                    image_count: params.row.images.length,
+                  });
                   setImagesRow(params.row);
                 }
               }}
               initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
               pageSizeOptions={[10, 25, 50, 100]}
+              onPaginationModelChange={(model) => track(posthog, "mukkadam_jobs_page_changed", { page: model.page, page_size: model.pageSize })}
               getRowHeight={() => "auto"}
               getEstimatedRowHeight={() => 78}
               columnHeaderHeight={44}

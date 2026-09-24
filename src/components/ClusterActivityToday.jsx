@@ -7,8 +7,10 @@
 // panel never disagree about what a given day shows.
 
 import { useEffect, useState } from "react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../api/client";
 import { localDateStr } from "../utils/dates";
+import { track, trackException } from "../analytics/track";
 
 // Same pattern as TodayTomorrowActivities.jsx (Cluster List page) — tap
 // a thumbnail to open the full-size proof photo in a new tab.
@@ -36,6 +38,7 @@ const FIELD_STATUS_CLASS = {
 // per day. Saving here updates it everywhere that mukkadam shows up
 // today, not just this cluster.
 function AttendanceBadge({ mukkadamId, mukkadamName, crewSize, day, count, effectiveFrom, onSaved }) {
+  const posthog = usePostHog();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(count ?? "");
   const [saving, setSaving] = useState(false);
@@ -86,9 +89,12 @@ function AttendanceBadge({ mukkadamId, mukkadamName, crewSize, day, count, effec
               date: day,
               count: Number(value),
             });
+            track(posthog, "mukkadam_attendance_saved", { mukkadam_id: mukkadamId, date: day, count: Number(value) });
             onSaved(Number(value));
             setEditing(false);
           } catch (e) {
+            trackException(posthog, e);
+            track(posthog, "mukkadam_attendance_save_failed", { mukkadam_id: mukkadamId, date: day });
             alert(e.message);
           } finally {
             setSaving(false);
@@ -105,6 +111,7 @@ function AttendanceBadge({ mukkadamId, mukkadamName, crewSize, day, count, effec
 }
 
 export default function ClusterActivityToday({ clusterId }) {
+  const posthog = usePostHog();
   const [dayMode, setDayMode] = useState("today"); // "today" | "tomorrow"
   const [activities, setActivities] = useState(null);
   const [attendance, setAttendance] = useState({}); // mukkadam_id -> { count, crew_size }
@@ -131,13 +138,19 @@ export default function ClusterActivityToday({ clusterId }) {
         <div style={{ display: "flex", gap: 6 }}>
           <button
             className={dayMode === "today" ? "btn btn-primary" : "btn"}
-            onClick={() => setDayMode("today")}
+            onClick={() => {
+              track(posthog, "activity_today_day_toggled", { cluster_id: clusterId, mode: "today" });
+              setDayMode("today");
+            }}
           >
             Today
           </button>
           <button
             className={dayMode === "tomorrow" ? "btn btn-primary" : "btn"}
-            onClick={() => setDayMode("tomorrow")}
+            onClick={() => {
+              track(posthog, "activity_today_day_toggled", { cluster_id: clusterId, mode: "tomorrow" });
+              setDayMode("tomorrow");
+            }}
           >
             Tomorrow
           </button>
