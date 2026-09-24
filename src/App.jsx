@@ -10,6 +10,7 @@ import ClusterPlaygroundPage from "./pages/ClusterPlaygroundPage";
 import ManagersPage from "./pages/ManagersPage";
 import MukkadamsListPage from "./pages/mukkadams/MukkadamsListPage";
 import MukkadamDetailPage from "./pages/mukkadams/MukkadamDetailPage";
+import AllocationsInsightsPage from "./pages/mukkadams/AllocationsInsightsPage";
 import PaymentsPage from "./pages/PaymentsPage";
 import BugReportWidget from "./components/BugReportWidget";
 import "./styles.css";
@@ -41,6 +42,7 @@ export default function App() {
           >
             <Route path="/" element={<OverviewPage />} />
             <Route path="/mukkadams" element={<MukkadamsListPage />} />
+            <Route path="/mukkadams/insights" element={<AllocationsInsightsPage />} />
             <Route path="/mukkadams/:id" element={<MukkadamDetailPage />} />
             <Route path="/payments" element={<PaymentsPage />} />
             <Route

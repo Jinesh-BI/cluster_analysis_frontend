@@ -10,21 +10,16 @@ import { Alert, Box, Chip, MenuItem, Select, Stack, TextField, Typography } from
 import { DataGrid } from "@mui/x-data-grid";
 import { mukkadamIntegrationApi } from "../../api/mukkadamIntegrationClient";
 import { formatCurrency } from "../../utils/format";
-import { ALL, TABLE_BOX_SX, TABLE_GRID_SX, titleCase, useDistinctValues } from "./tableUtils";
-
-const WORK_STATUS_OPTIONS = ["work_not_started", "in_progress", "precomplete", "completed"];
-const WORK_STATUS_COLOR = {
-  work_not_started: "default",
-  in_progress: "info",
-  precomplete: "warning",
-  completed: "success",
-};
-const PAYMENT_STATUS_COLOR = {
-  pending: "warning",
-  dispute: "error",
-  done: "success",
-  settled: "primary",
-};
+import {
+  ALL,
+  PAYMENT_STATUS_COLOR,
+  TABLE_BOX_SX,
+  TABLE_GRID_SX,
+  WORK_STATUS_COLOR,
+  WORK_STATUS_OPTIONS,
+  titleCase,
+  useDistinctValues,
+} from "./tableUtils";
 
 const columns = [
   { field: "allocated_date", headerName: "Date", width: 110 },
