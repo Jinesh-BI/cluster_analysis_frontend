@@ -12,6 +12,23 @@ import FastForwardOutlinedIcon from "@mui/icons-material/FastForwardOutlined";
 
 export const ALL = "__all__";
 
+// Shared across AllocationsTable and the Allocations Insights screen — one
+// definition of what these statuses mean/look like, so a color doesn't
+// drift between the two surfaces.
+export const WORK_STATUS_OPTIONS = ["work_not_started", "in_progress", "precomplete", "completed"];
+export const WORK_STATUS_COLOR = {
+  work_not_started: "default",
+  in_progress: "info",
+  precomplete: "warning",
+  completed: "success",
+};
+export const PAYMENT_STATUS_COLOR = {
+  pending: "warning",
+  dispute: "error",
+  done: "success",
+  settled: "primary",
+};
+
 export function pct(value, total) {
   if (!total) return 0;
   return Math.round((value / total) * 100);

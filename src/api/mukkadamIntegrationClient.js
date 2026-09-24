@@ -73,6 +73,42 @@ function buildNotificationsQuery({ since, mukkadamId, isRead } = {}) {
   return qs ? `?${qs}` : "";
 }
 
+// Same "omit means all" rule again, plus the insights-specific date/paging params.
+function buildInsightsQuery({ date, dateFrom, dateTo, mukkadamId, search, workStatus, page, pageSize } = {}) {
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  if (mukkadamId !== undefined && mukkadamId !== null) params.set("mukkadam_id", String(mukkadamId));
+  if (search) params.set("search", search);
+  if (workStatus) params.set("work_status", workStatus);
+  if (page) params.set("page", String(page));
+  if (pageSize) params.set("page_size", String(pageSize));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function buildTrendQuery({ dateFrom, dateTo, granularity, mukkadamId } = {}) {
+  const params = new URLSearchParams();
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  if (granularity) params.set("granularity", granularity);
+  if (mukkadamId !== undefined && mukkadamId !== null) params.set("mukkadam_id", String(mukkadamId));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function buildLeaderboardQuery({ dateFrom, dateTo, metric, limit, workStatus } = {}) {
+  const params = new URLSearchParams();
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  if (metric) params.set("metric", metric);
+  if (limit) params.set("limit", String(limit));
+  if (workStatus) params.set("work_status", workStatus);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export const mukkadamIntegrationApi = {
   // Aggregate tile-level counts — no params.
   getMukkadamCounts: (signal) => request("/tender/api/integration/mukkadams/stats-counts/", { signal }),
@@ -102,4 +138,25 @@ export const mukkadamIntegrationApi = {
     request(`/tender/api/integration/mukkadams/notifications/completed-work/${buildNotificationsQuery(filters)}`, {
       signal,
     }),
+
+  // Org-wide planned-vs-actual summary (acres/amount, work-status mix,
+  // activity mix) plus a paginated per-mukkadam breakdown with each
+  // mukkadam's own nested allocations — defaults to today when no date
+  // filter is given. filters: { date, dateFrom, dateTo, mukkadamId, search,
+  // workStatus, page, pageSize }. Pagination is on mukkadams, not
+  // allocations — see reference/am_integration_docs.md §8.
+  getAllocationsInsights: (filters, signal) =>
+    request(`/tender/api/integration/mukkadams/insights/allocations/${buildInsightsQuery(filters)}`, { signal }),
+
+  // Daily/weekly/monthly rollup for trend charts. filters: { dateFrom,
+  // dateTo, granularity, mukkadamId }. `daily` buckets are zero-filled by
+  // the server; weekly/monthly are not — see reference doc §9.
+  getAllocationTrend: (filters, signal) =>
+    request(`/tender/api/integration/mukkadams/insights/trend/${buildTrendQuery(filters)}`, { signal }),
+
+  // Top mukkadams ranked by actual amount/acres/allocation count over a
+  // range (defaults to current calendar month to date). filters: {
+  // dateFrom, dateTo, metric, limit, workStatus }. See reference doc §10.
+  getMukkadamLeaderboard: (filters, signal) =>
+    request(`/tender/api/integration/mukkadams/insights/leaderboard/${buildLeaderboardQuery(filters)}`, { signal }),
 };
