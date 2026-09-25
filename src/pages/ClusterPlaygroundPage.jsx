@@ -150,6 +150,39 @@ function formatPlanDate(dateString) {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
+// Publish's response can carry a `mukkadam_allocations_push` summary —
+// the result of pushing this schedule's mukkadam allocations out to the
+// tender side. Maps its overall `status` onto the existing status-pill
+// palette so it reads consistently with every other pill on the page.
+function mukkadamPushStatusClass(status) {
+  switch (status) {
+    case "SUCCESS":
+      return "status-pill--paid";
+    case "PARTIAL":
+      return "status-pill--pending";
+    case "FAILED":
+      return "status-pill--overdue";
+    default:
+      return "";
+  }
+}
+
+// One line per allocation the push attempted — "Activity 30017 ·
+// Mukkadam 9002008" — used to label both success and error rows.
+function mukkadamPushRowLabel(result) {
+  const parts = [];
+  if (result.api_activity_id != null) parts.push(`Activity ${result.api_activity_id}`);
+  if (result.mukkadam_id != null) parts.push(`Mukkadam ${result.mukkadam_id}`);
+  return parts.join(" · ") || "Allocation";
+}
+
+function mukkadamPushRowMessage(result) {
+  if (result.status === "error") return result.message || result.code || "Could not push this allocation.";
+  if (result.status === "created") return "Allocation created.";
+  if (result.status === "updated") return "Allocation updated.";
+  return result.message || result.status;
+}
+
 // The block's current proposed date — the earliest of its (usually one)
 // pieces, falling back to its real API date.
 function effectiveDate(block) {
@@ -1791,6 +1824,11 @@ export default function ClusterPlaygroundPageV2() {
     ? `Published to the calendar by ${scheduleInfo.last_published_by_name || "someone"} on ${scheduleInfo.last_published_at.slice(0, 10)}.`
     : "Not published yet.";
 
+  // Read straight off the last publish response — a plain save doesn't
+  // touch this field, so it naturally disappears once `scheduleInfo` is
+  // replaced by a save that didn't also publish.
+  const mukkadamPushResult = scheduleInfo?.mukkadam_allocations_push || null;
+
   const publishDisabledReason = !scheduleInfo
     ? "Save a plan before publishing"
     : hasUnsavedChanges
@@ -1834,6 +1872,32 @@ export default function ClusterPlaygroundPageV2() {
             <div className="cluster-card__meta">{publishedStatusText}</div>
             {saveError && <p className="error-text">{saveError}</p>}
             {publishError && <p className="error-text">{publishError}</p>}
+
+            {mukkadamPushResult && (
+              <div style={{ marginTop: 8 }}>
+                <span className={`status-pill ${mukkadamPushStatusClass(mukkadamPushResult.status)}`}>
+                  Mukkadam push: {mukkadamPushResult.status || "UNKNOWN"}
+                </span>
+                <span className="muted" style={{ marginLeft: 8, fontSize: 13 }}>
+                  {mukkadamPushResult.submitted ?? 0} submitted &middot; {mukkadamPushResult.created ?? 0} created &middot;{" "}
+                  {mukkadamPushResult.updated ?? 0} updated
+                  {mukkadamPushResult.errors ? ` · ${mukkadamPushResult.errors} failed` : ""}
+                </span>
+                {(mukkadamPushResult.results || []).length > 0 && (
+                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                    {mukkadamPushResult.results.map((r, i) => (
+                      <li
+                        key={`${r.api_activity_id}-${r.mukkadam_id}-${i}`}
+                        className={r.status === "error" ? "error-text" : "muted"}
+                        style={{ fontSize: 13 }}
+                      >
+                        {mukkadamPushRowLabel(r)}: {mukkadamPushRowMessage(r)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="planning-header-right">
