@@ -465,11 +465,11 @@ export default function ClusterDetailPage() {
 
       <h3 style={{ marginTop: 28 }}>Farmers</h3>
       <p className="muted">Tap a farmer to see their payment activity.</p>
-      <ul className="farmer-list">
+      <div className="farmer-list">
         {visibleFarmers.map((f) => (
           <FarmerRow key={f.farmer_id} clusterId={id} farmer={f} coverage={coverageByFarmer[f.farmer_id]} />
         ))}
-      </ul>
+      </div>
       {cluster.farmers.length > 6 && (
         <button className="btn" onClick={() => setShowAllFarmers((v) => !v)}>
           {showAllFarmers ? "Show fewer" : `Show all ${cluster.farmers.length}`}
