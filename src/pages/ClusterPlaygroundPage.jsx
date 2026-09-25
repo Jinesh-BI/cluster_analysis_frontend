@@ -351,6 +351,16 @@ function PlanningActivityRow({
   const alreadyAllocatedIds = new Set(existingAllocations.map((a) => String(a.mukkadam_id)));
   const availableMukkadams = (deployedMukkadams || []).filter((m) => !alreadyAllocatedIds.has(String(m.mukkadam_id)));
 
+  // Mukkadams can only be allocated to today or a future date — the crew
+  // hasn't shown up yet to be assigned on a day that's already gone. This
+  // only locks the "add a new allocation" form; who's already allocated on
+  // a past day still reads and shows in full (chips + unassign), it's just
+  // frozen from new picks.
+  const isPastDate = Boolean(date && date < toISODate(new Date()));
+  const effectiveDisabledReason = isPastDate
+    ? "This date has already passed — mukkadams can only be allocated for today or a future date."
+    : disabledReason;
+
   async function handleAllocate() {
     const mukkadam = availableMukkadams.find((m) => String(m.mukkadam_id) === pickedMukkadamId);
     const percent = pickedPercent || percentOptions[percentOptions.length - 1];
@@ -439,9 +449,9 @@ function PlanningActivityRow({
             <p className="muted" style={{ margin: 0 }}>
               This activity isn&apos;t placed on a day yet.
             </p>
-          ) : disabledReason ? (
+          ) : effectiveDisabledReason ? (
             <p className="muted" style={{ margin: 0 }}>
-              {disabledReason}
+              {effectiveDisabledReason}
             </p>
           ) : remainingPercent <= 0 ? (
             <span className="muted">Fully allocated</span>
