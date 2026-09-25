@@ -334,6 +334,7 @@ function PlanningActivityRow({
   dayAllocations,
   dayAllocationsLoading,
   disabledReason,
+  isAdmin,
 }) {
   const posthog = usePostHog();
   const [open, setOpen] = useState(false);
@@ -352,13 +353,14 @@ function PlanningActivityRow({
   const availableMukkadams = (deployedMukkadams || []).filter((m) => !alreadyAllocatedIds.has(String(m.mukkadam_id)));
 
   // Mukkadams can only be allocated to today or a future date — the crew
-  // hasn't shown up yet to be assigned on a day that's already gone. This
-  // only locks the "add a new allocation" form; who's already allocated on
-  // a past day still reads and shows in full (chips + unassign), it's just
-  // frozen from new picks.
+  // hasn't shown up yet to be assigned on a day that's already gone. Only
+  // an admin can override that and still allocate/unassign on a past day.
+  // Either way, who's already allocated on a past day still reads and
+  // shows in full (chips) — it's just the write actions that are gated.
   const isPastDate = Boolean(date && date < toISODate(new Date()));
-  const effectiveDisabledReason = isPastDate
-    ? "This date has already passed — mukkadams can only be allocated for today or a future date."
+  const pastDateLockedForRole = isPastDate && !isAdmin;
+  const effectiveDisabledReason = pastDateLockedForRole
+    ? "This date has already passed — only an admin can allocate mukkadams for a past date."
     : disabledReason;
 
   async function handleAllocate() {
@@ -433,8 +435,8 @@ function PlanningActivityRow({
                       type="button"
                       className="mukkadam-chip__remove"
                       onClick={() => handleUnassign(a.allocation_id)}
-                      disabled={removingId === a.allocation_id}
-                      title="Remove this mukkadam"
+                      disabled={removingId === a.allocation_id || pastDateLockedForRole}
+                      title={pastDateLockedForRole ? "Only an admin can remove an allocation for a past date." : "Remove this mukkadam"}
                       aria-label={`Remove ${a.mukkadam_name || "this mukkadam"}`}
                     >
                       {removingId === a.allocation_id ? "…" : "×"}
@@ -443,6 +445,12 @@ function PlanningActivityRow({
                 </span>
               ))}
             </div>
+          )}
+
+          {isPastDate && isAdmin && (
+            <span className="status-pill status-pill--pending" style={{ alignSelf: "flex-start" }}>
+              Admin override — past date
+            </span>
           )}
 
           {!date ? (
@@ -649,6 +657,15 @@ function PlotRow({
   const moved = shift !== 0;
   const mag = Math.abs(shift);
   const lockedIds = new Set(blocks.filter((b) => b.completed && !isAdmin).map((b) => b.activity_id));
+
+  // A plot whose start date has already gone by can't have its calendar
+  // date changed by a regular manager anymore — only an admin can still
+  // reschedule it. Today or a future start date stays fully editable for
+  // everyone. This is a coarser, whole-plot gate on top of the per-activity
+  // `completed` lock above: it decides whether the row opens at all.
+  const plotStartIsPast = Boolean(want && want < toISODate(new Date()));
+  const pastLockedForRole = plotStartIsPast && !isAdmin;
+  const rowEditable = editable && !pastLockedForRole;
   // Which date the picker is editing: a single activity, or the whole
   // plot's chain when nothing specific is selected.
   const targetIndex = target ? blocks.findIndex((b) => b.activity_id === target) : -1;
@@ -724,13 +741,14 @@ function PlotRow({
   return (
     <div className="plot-row-wrap">
       <div
-        className={`call-plot plot-row ${editing ? "plot-row--editing" : ""} ${editable ? "plot-row--clickable" : ""}`}
-        role={editable ? "button" : undefined}
-        tabIndex={editable ? 0 : undefined}
-        aria-expanded={editable ? editing : undefined}
-        onClick={editable ? onToggleEdit : undefined}
+        className={`call-plot plot-row ${editing ? "plot-row--editing" : ""} ${rowEditable ? "plot-row--clickable" : ""}`}
+        role={rowEditable ? "button" : undefined}
+        tabIndex={rowEditable ? 0 : undefined}
+        aria-expanded={rowEditable ? editing : undefined}
+        title={pastLockedForRole ? "This plot's start date has already passed — only an admin can reschedule it." : undefined}
+        onClick={rowEditable ? onToggleEdit : undefined}
         onKeyDown={
-          editable
+          rowEditable
             ? (event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -757,9 +775,14 @@ function PlotRow({
               {mag} day{mag === 1 ? "" : "s"} {shift < 0 ? "earlier" : "later"}
             </em>
           )}
+          {plotStartIsPast && (
+            <em className={pastLockedForRole ? "is-strong" : ""}>
+              {pastLockedForRole ? "Past date — admin only" : "Admin override — past date"}
+            </em>
+          )}
         </span>
         <span
-          className={`plot-chip ${editing ? "plot-chip--open" : ""} ${editable ? "" : "plot-chip--static"}`}
+          className={`plot-chip ${editing ? "plot-chip--open" : ""} ${rowEditable ? "" : "plot-chip--static"}`}
           aria-hidden="true"
         >
           <span>{formatPlanDate(want)}</span>
@@ -1262,6 +1285,7 @@ function PlanningWorkbench({
                     onUnassignMukkadam={onUnassignMukkadam}
                     dayAllocations={dayAllocations}
                     dayAllocationsLoading={dayAllocationsLoading}
+                    isAdmin={isAdmin}
                     disabledReason={
                       hasUnsavedChanges
                         ? "Save your plan before allocating mukkadams — this piece isn't scheduled on the backend yet."
