@@ -84,7 +84,7 @@ export const api = {
   // saved, so this can never publish something different from what
   // Save persisted.
   publishClusterSchedule: (id) =>
-    request(`/clusters/${id}/mukkadam-allocations/`, { method: "POST" }),
+    request(`/clusters/${id}/`, { method: "POST" }),
 
   // Labor contact for the cluster, sourced from the external mukkadam
   // service — read-only, resolved server-side from head_mukkadam.
