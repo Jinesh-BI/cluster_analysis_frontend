@@ -11,7 +11,7 @@
 // already been paid" (booking/payments) before "what's been done"
 // (booked activities) — each its own clearly labeled section rather than
 // one flat run-on list.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePostHog } from "@posthog/react";
 import {
   Accordion,
@@ -90,8 +90,9 @@ function CoverageChip({ coverage }) {
   );
 }
 
-export default function FarmerRow({ clusterId, farmer, coverage }) {
+export default function FarmerRow({ clusterId, farmer, coverage, focusToken }) {
   const posthog = usePostHog();
+  const rowRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [activities, setActivities] = useState(null);
@@ -123,8 +124,23 @@ export default function FarmerRow({ clusterId, farmer, coverage }) {
     if (!data) loadDetail(); // already fetched once, don't refetch on every re-open
   }
 
+  // Lets the Payment coverage summary "jump to" this farmer — expand and
+  // scroll it into view. token changes on every click (even re-clicking
+  // the same farmer), so this fires each time, not just on first mention.
+  useEffect(() => {
+    if (focusToken == null) return;
+    setOpen(true);
+    if (!data) loadDetail();
+    const frame = requestAnimationFrame(() => {
+      rowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusToken]);
+
   return (
     <Accordion
+      ref={rowRef}
       expanded={open}
       onChange={handleChange}
       disableGutters
