@@ -23,6 +23,39 @@ import { holidayDateMap } from "../utils/dates";
 // reads clearly as a calendar rather than a strip of dots.
 const CALENDAR_CELL_SIZE = 20;
 
+// Graduated urgency for the Payment coverage table, keyed off how many
+// upcoming activities a farmer's vault can already fund (not the deficit) —
+// 0 covered means nothing can proceed without a call; a handful covered is
+// just a heads-up for the farmer; several covered is barely worth a glance.
+function coverageSeverity(covered) {
+  if (covered === 0) {
+    return {
+      label: "Critical",
+      tagClass: "erp-tag--danger",
+      note: "Call the farmer — funds must be collected before any activity can proceed",
+    };
+  }
+  if (covered <= 2) {
+    return {
+      label: "Manageable",
+      tagClass: "erp-tag--warning",
+      note: `Give the farmer advance notice — only ${covered} activit${covered === 1 ? "y" : "ies"} can be funded right now`,
+    };
+  }
+  if (covered <= 4) {
+    return {
+      label: "Good",
+      tagClass: "erp-tag--info",
+      note: "Most activities are already funded — just keep an eye on it",
+    };
+  }
+  return {
+    label: "Low priority",
+    tagClass: "erp-tag--neutral",
+    note: "No action needed",
+  };
+}
+
 export default function ClusterDetailPage() {
   const posthog = usePostHog();
   const { id } = useParams();
@@ -43,7 +76,8 @@ export default function ClusterDetailPage() {
   const [showHolidayForm, setShowHolidayForm] = useState(false);
   const [error, setError] = useState(null);
   const [coverageByFarmer, setCoverageByFarmer] = useState({});
-  console.log("coverageByFarmer")
+  const [focusRequest, setFocusRequest] = useState(null); // { farmerId, token }
+
   useEffect(() => {
     setCluster(null);
     setCalendar(null);
@@ -107,22 +141,31 @@ export default function ClusterDetailPage() {
     });
   }, [id, cluster?.farmer_count]);
 
+  // Only farmers actually at risk are decision-relevant here — a manager
+  // needs to know who and which activities, not a headcount of the
+  // unremarkable "fully funded" majority.
+  const atRiskFarmers = useMemo(() => {
+    if (!cluster?.farmers) return [];
+    return cluster.farmers
+      .map((f) => ({ farmer: f, coverage: coverageByFarmer[f.farmer_id] }))
+      .filter(({ coverage }) => coverage?.status === "ok" && coverage.data.has_shortage)
+      .sort((a, b) => a.coverage.data.activities_covered - b.coverage.data.activities_covered);
+  }, [cluster?.farmers, coverageByFarmer]);
+
   const coverageStats = useMemo(() => {
     const entries = Object.values(coverageByFarmer);
-    const ok = entries.filter((e) => e.status === "ok");
-    const atRisk = ok.filter((e) => e.data.has_shortage);
-    const uncoveredActivities = atRisk.reduce(
-      (sum, e) => sum + (e.data.upcoming_activities_total - e.data.activities_covered),
+    const uncoveredActivities = atRiskFarmers.reduce(
+      (sum, { coverage }) =>
+        sum + (coverage.data.upcoming_activities_total - coverage.data.activities_covered),
       0
     );
     return {
       checked: entries.length,
       total: cluster?.farmers?.length || 0,
-      atRisk: atRisk.length,
-      fullyFunded: ok.length - atRisk.length,
+      atRisk: atRiskFarmers.length,
       uncoveredActivities,
     };
-  }, [coverageByFarmer, cluster?.farmers?.length]);
+  }, [coverageByFarmer, cluster?.farmers?.length, atRiskFarmers]);
 
   const calendarDayMap = useMemo(() => {
     const map = {};
@@ -144,6 +187,14 @@ export default function ClusterDetailPage() {
     const holidayLabel = holidayMap[date];
     if (!base && !holidayLabel) return undefined;
     return { ...(base || {}), isHoliday: Boolean(holidayLabel), holidayLabel };
+  }
+
+  // Jumps to a farmer's row in the Farmers list below and expands it —
+  // used by the Payment coverage card so a manager can act on a flagged
+  // farmer without hunting through the full list themselves.
+  function focusFarmer(farmerId) {
+    setShowAllFarmers(true); // the farmer may be past the default slice(0, 6)
+    setFocusRequest({ farmerId, token: Date.now() });
   }
 
   function loadManagers() {
@@ -337,42 +388,126 @@ export default function ClusterDetailPage() {
         <p className="muted">Nothing coming up.</p>
       )}
 
-      <div className="info-card" style={{ marginTop: 20 }}>
-        <div className="info-card__title-row">
-          <div className="info-card__title">Payment coverage</div>
-          {coverageStats.checked > 0 &&
-            (coverageStats.atRisk > 0 ? (
-              <span className="status-pill status-pill--overdue">⚠ {coverageStats.atRisk} at risk</span>
-            ) : (
-              <span className="status-pill status-pill--paid">✓ All funded</span>
-            ))}
+      <div className="erp-card" style={{ marginTop: 20 }}>
+        
+  {/* ERP Header Row with System Metadata */}
+  <div className="erp-card__header">
+    <div className="erp-card__title-group">
+      <h3 className="erp-card__title">Payment Coverage & Vault Audit</h3>
+    </div>
+
+    {coverageStats.checked > 0 && (
+      <div className="erp-card__status-container">
+        {coverageStats.atRisk > 0 ? (
+          <div className="erp-status-badge erp-status-badge--critical">
+            <span className="erp-indicator-pulse"></span>
+            <span>CRITICAL: {coverageStats.atRisk} EXCEPTION(S)</span>
+          </div>
+        ) : (
+          <div className="erp-status-badge erp-status-badge--optimal">
+            <span>STATUS: OPTIMAL (100% FUNDED)</span>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+
+  {/* Progress Matrix / Data Loading State */}
+  {coverageStats.checked < coverageStats.total && (
+    <div className="erp-progress-panel">
+      <div className="erp-progress-row">
+        <span className="erp-data-label">Ledger Sync Progress:</span>
+        <span className="erp-data-value">{coverageStats.checked} / {coverageStats.total} Records Processed</span>
+      </div>
+      <div className="erp-progress-track">
+        <div 
+          className="erp-progress-fill" 
+          style={{ width: `${(coverageStats.checked / coverageStats.total) * 100}%` }}
+        ></div>
+      </div>
+    </div>
+  )}
+
+  {/* Exception Data Grid (ERP Table-like Structure) */}
+  {atRiskFarmers.length > 0 && (
+    <div className="erp-exception-block">
+      <div className="erp-alert-strip erp-alert-strip--warning">
+        <span className="erp-alert-code">Alert:</span>
+        <span className="erp-alert-message">
+          Execution halted for <strong>{coverageStats.uncoveredActivities}</strong> pending activities due to insufficient vault liquidity.
+        </span>
+      </div>
+
+      <div className="erp-data-table-container">
+        <div className="erp-table-header">
+          <span className="col-farmer">Farmer</span>
+          <span className="col-metric">Funding Ratio</span>
+          <span className="col-status">Risk Assessment</span>
+          <span className="col-action">Next Step</span>
         </div>
-        <p className="muted" style={{ marginTop: -4, marginBottom: 10 }}>
-          Which farmers&apos; vault balances can cover their upcoming September activities.
-        </p>
-        <div className="coverage-stat-row">
-          <div className={`stat-box ${coverageStats.atRisk > 0 ? "stat-box--urgent" : "stat-box--healthy"}`}>
-            <div className="stat-box__value">{coverageStats.atRisk}</div>
-            <div className="stat-box__label">Farmers at risk</div>
-          </div>
-          <div className="stat-box stat-box--healthy">
-            <div className="stat-box__value">{coverageStats.fullyFunded}</div>
-            <div className="stat-box__label">Fully funded</div>
-          </div>
-          <div className="stat-box stat-box--urgent">
-            <div className="stat-box__value">{coverageStats.uncoveredActivities}</div>
-            <div className="stat-box__label">Activities to hold off</div>
-          </div>
-          {coverageStats.checked < coverageStats.total && (
-            <div className="stat-box stat-box--neutral">
-              <div className="stat-box__value">
-                {coverageStats.checked}/{coverageStats.total}
+
+        <div className="erp-table-body">
+          {atRiskFarmers.map(({ farmer, coverage }) => {
+            const covered = coverage.data.activities_covered;
+            const total = coverage.data.upcoming_activities_total;
+            const percentage = Math.round((covered / total) * 100);
+            const severity = coverageSeverity(covered);
+
+            return (
+              <div
+                key={farmer.farmer_id}
+                className="erp-table-row"
+                onClick={() => focusFarmer(farmer.farmer_id)}
+              >
+                <div className="col-farmer">
+                  <div className="erp-farmer-meta">
+                    <span className="erp-text-bold">{farmer.farmer_name}</span>
+                    <span className="erp-recommended-note">{severity.note}</span>
+                  </div>
+                </div>
+
+                <div className="col-metric">
+                  <span className="erp-numeric-stat">{covered} / {total}</span>
+                  <span className="erp-sub-stat">({percentage}%)</span>
+                </div>
+
+                <div className="col-status">
+                  <span className={`erp-inline-tag ${severity.tagClass}`}>{severity.label}</span>
+                </div>
+
+                <div className="col-action">
+                  <button type="button" className="erp-btn-link">
+                    View full details ↓
+                  </button>
+                </div>
               </div>
-              <div className="stat-box__label">Checked so far</div>
-            </div>
-          )}
+            );
+          })}
         </div>
       </div>
+    </div>
+  )}
+
+  {/* Optimal System State */}
+  {atRiskFarmers.length === 0 && coverageStats.checked > 0 && (
+    <div className="erp-empty-panel erp-empty-panel--success">
+      <span className="erp-panel-icon">✔</span>
+      <div className="erp-panel-text">
+        <strong>All Systems Nominal:</strong> Verified {coverageStats.checked} accounts. No liquidity discrepancies identified. Execution queue is unlocked.
+      </div>
+    </div>
+  )}
+
+  {/* Initializing State */}
+  {coverageStats.checked === 0 && (
+    <div className="erp-empty-panel erp-empty-panel--neutral">
+      <span className="erp-panel-spinner">⟳</span>
+      <div className="erp-panel-text">
+        Querying core banking / vault infrastructure... Please wait.
+      </div>
+    </div>
+  )}
+</div>
 
       <h3 style={{ marginTop: 8 }}>Cash flow</h3>
       <p className="muted">Money in from farmers, next to money out to the mukkadam.</p>
@@ -467,7 +602,13 @@ export default function ClusterDetailPage() {
       <p className="muted">Tap a farmer to see their payment activity.</p>
       <div className="farmer-list">
         {visibleFarmers.map((f) => (
-          <FarmerRow key={f.farmer_id} clusterId={id} farmer={f} coverage={coverageByFarmer[f.farmer_id]} />
+          <FarmerRow
+            key={f.farmer_id}
+            clusterId={id}
+            farmer={f}
+            coverage={coverageByFarmer[f.farmer_id]}
+            focusToken={focusRequest?.farmerId === f.farmer_id ? focusRequest.token : null}
+          />
         ))}
       </div>
       {cluster.farmers.length > 6 && (
