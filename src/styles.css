@@ -759,25 +759,6 @@ input:focus-visible {
   color: var(--color-fail);
 }
 
-.coverage-block {
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-/* Payment-coverage summary cards — capped max-width (unlike .stat-row's
-   1fr columns) so 3-4 boxes don't stretch to fill the whole card width. */
-.coverage-stat-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 160px));
-  gap: 10px;
-}
-
-@media (max-width: 640px) {
-  .coverage-stat-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 @media (max-width: 640px) {
   .day-panel {
     width: 100%;
@@ -2882,4 +2863,364 @@ input:focus-visible {
 .mini-month-head button:disabled {
   color: #cfc9ba;
   cursor: default;
+}
+
+
+/* ================================================================= *
+ * ERP System - Payment Coverage & Vault Audit Styles                *
+ * ================================================================= */
+
+.erp-card {
+  background-color: #ffffff;
+  border: 1px solid #d1d5db; /* Clean enterprise border */
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  padding: 16px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #111827;
+  font-size: 14px;
+}
+
+/* Header */
+.erp-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.erp-card__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.erp-system-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.erp-card__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* Status Badges */
+.erp-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.erp-status-badge--critical {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.erp-status-badge--optimal {
+  background-color: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.erp-indicator-pulse {
+  width: 6px;
+  height: 6px;
+  background-color: #dc2626;
+  border-radius: 50%;
+  box-shadow: 0 0 0 rgba(220, 38, 38, 0.4);
+  animation: erp-pulse 1.5s infinite;
+}
+
+@keyframes erp-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+/* Progress Panel */
+.erp-progress-panel {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+
+.erp-progress-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.erp-data-label {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.erp-data-value {
+  color: #111827;
+  font-weight: 600;
+}
+
+.erp-progress-track {
+  width: 100%;
+  height: 6px;
+  background-color: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.erp-progress-fill {
+  height: 100%;
+  background-color: #2563eb;
+  transition: width 0.3s ease;
+}
+
+/* Alert Strip */
+.erp-alert-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.erp-alert-strip--warning {
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.erp-alert-code {
+  font-family: monospace;
+  font-weight: 700;
+  background-color: rgba(146, 64, 14, 0.1);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* Data Table Grid Structure */
+.erp-data-table-container {
+  margin-top: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #ffffff;
+}
+
+.erp-table-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  padding: 8px 12px;
+  background-color: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #4b5563;
+  letter-spacing: 0.025em;
+}
+
+.erp-table-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.erp-table-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.erp-table-row:last-child {
+  border-bottom: none;
+}
+
+.erp-table-row:hover {
+  background-color: #f8fafc;
+}
+
+/* Table Columns */
+.col-farmer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.erp-id-mono {
+  font-family: monospace;
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.erp-text-bold {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.col-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.erp-farmer-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.erp-recommended-note {
+  font-size: 11px;
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.col-status {
+  display: flex;
+  align-items: center;
+}
+
+.col-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.erp-card__status-container {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.erp-exception-block {
+  margin-top: 4px;
+}
+
+.erp-alert-message {
+  line-height: 1.4;
+}
+
+.erp-numeric-stat {
+  font-family: monospace;
+  font-weight: 600;
+  color: #111827;
+}
+
+.erp-sub-stat {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.erp-inline-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 3px;
+}
+
+.erp-tag--danger {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.erp-tag--warning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.erp-tag--info {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.erp-tag--neutral {
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+.erp-btn-link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.erp-btn-link:hover {
+  text-decoration: underline;
+}
+
+/* Empty Panels */
+.erp-empty-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.erp-empty-panel--success {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.erp-empty-panel--neutral {
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  color: #4b5563;
+}
+
+.erp-panel-icon {
+  font-weight: bold;
+}
+
+.erp-panel-spinner {
+  display: inline-block;
+  animation: erp-spin 1s linear infinite;
+}
+
+@keyframes erp-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
