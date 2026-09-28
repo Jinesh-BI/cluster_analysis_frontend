@@ -40,6 +40,14 @@ export const opsApi = {
   getFarmerActivityCoverage: (farmerId) =>
     request(`/payment-schedule/coverage/${farmerId}/`),
 
+  // Org-wide (or, for an Assistant RM, cluster-scoped) ops warning
+  // dashboard — every farmer in negative vault balance, or whose vault
+  // can only cover 2 or fewer upcoming September activities
+  // (reference/Farmer_coverage_warning.md). No auth required beyond the
+  // usual Token — the backend derives scope from the caller's own
+  // ManagerProfile/role, not a param here.
+  getCoverageWarnings: () => request(`/payment-schedule/coverage/warnings/`),
+
   // Bypasses a ledger entry's normal 24h maturity window and releases it
   // immediately — a real mutation (unlike the read-only mukkadam
   // integration API), so it requires a reason for the audit trail.
