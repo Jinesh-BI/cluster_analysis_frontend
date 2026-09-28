@@ -1771,6 +1771,70 @@ input:focus-visible {
   border-top: none;
 }
 
+
+/* Why the allocate form isn't shown right now (past date, unsaved plan,
+   fully allocated) — paired with what's already covered, so it reads as
+   a status update rather than a dead end. */
+.mukkadam-lock-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(201, 138, 63, 0.08);
+  border: 1px solid rgba(201, 138, 63, 0.25);
+}
+
+.mukkadam-lock-notice .status-pill {
+  flex: none;
+  margin-top: 1px;
+}
+
+.mukkadam-lock-notice__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+/* Shown after Save when mukkadam allocations made this session still need
+   a publish to actually reach the field team — an actionable nudge, not
+   just a status line, so it carries its own call-to-action button. */
+.publish-reminder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgba(47, 107, 79, 0.08);
+  border: 1px solid rgba(47, 107, 79, 0.25);
+}
+
+.publish-reminder__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.publish-reminder__text strong {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.publish-reminder__text span {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.publish-reminder__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .planning-activity-row--clickable {
   cursor: pointer;
 }
