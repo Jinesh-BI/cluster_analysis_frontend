@@ -392,9 +392,18 @@ function PlanningActivityRow({
   // shows in full (chips) — it's just the write actions that are gated.
   const isPastDate = Boolean(date && date < toISODate(new Date()));
   const pastDateLockedForRole = isPastDate && !isAdmin;
-  const effectiveDisabledReason = pastDateLockedForRole
+
+  // Whichever reason locks the form, tell the reader what's already
+  // covered so the message is actionable rather than a dead end — "it's
+  // locked, but here's who's already on it and how much is left."
+  const allocationSummary =
+    existingAllocations.length > 0
+      ? ` ${existingAllocations.length} mukkadam${existingAllocations.length === 1 ? "" : "s"} already allocated, covering ${allocatedPercent}% of this work.`
+      : " No mukkadam has been allocated to this activity yet.";
+  const baseDisabledReason = pastDateLockedForRole
     ? "This date has already passed — only an admin can allocate mukkadams for a past date."
     : disabledReason;
+  const effectiveDisabledReason = baseDisabledReason ? `${baseDisabledReason}${allocationSummary}` : null;
 
   async function handleAllocate() {
     const mukkadam = availableMukkadams.find((m) => String(m.mukkadam_id) === pickedMukkadamId);
@@ -491,9 +500,10 @@ function PlanningActivityRow({
               This activity isn&apos;t placed on a day yet.
             </p>
           ) : effectiveDisabledReason ? (
-            <p className="muted" style={{ margin: 0 }}>
-              {effectiveDisabledReason}
-            </p>
+            <div className="mukkadam-lock-notice">
+              <span className="status-pill status-pill--pending">Locked</span>
+              <p className="mukkadam-lock-notice__text">{effectiveDisabledReason}</p>
+            </div>
           ) : remainingPercent <= 0 ? (
             <span className="muted">Fully allocated</span>
           ) : (
@@ -1430,6 +1440,12 @@ export default function ClusterPlaygroundPageV2() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [featureUnavailable, setFeatureUnavailable] = useState(false);
+  // Tracks mukkadam allocate/unassign calls made this session that haven't
+  // gone out to the field team yet — allocation is a separate API from
+  // save/publish, so nothing else on the page otherwise notices this.
+  // Cleared once a publish actually succeeds (that's the push).
+  const [pendingMukkadamPush, setPendingMukkadamPush] = useState(false);
+  const [showPublishReminder, setShowPublishReminder] = useState(false);
 
   useEffect(() => {
     setCluster(null);
@@ -1718,6 +1734,7 @@ export default function ClusterPlaygroundPageV2() {
       track(posthog, "save_plan_clicked", { cluster_id: id, activity_count: payload.length });
       setScheduleInfo(saved);
       setHasUnsavedChanges(false);
+      if (pendingMukkadamPush) setShowPublishReminder(true);
       api.getCalendar(id).then(setReferenceCalendar).catch((e) => setError(e.message));
     } catch (e) {
       trackException(posthog, e);
@@ -1729,9 +1746,10 @@ export default function ClusterPlaygroundPageV2() {
   }
 
   // Allocates a mukkadam to one date-piece of an activity. Orthogonal to
-  // the plan/schedule state — it never touches `plan`, `hasUnsavedChanges`,
-  // save, or publish, and its result is only used by the calling row to
-  // show a chip / cap its own remaining percent for this session.
+  // the plan/schedule state — it never touches `plan` or `hasUnsavedChanges`
+  // — but it DOES mean there's now something new for Publish to push out,
+  // so it's tracked separately in `pendingMukkadamPush` for the reminder
+  // shown after the next save.
   async function handleAllocateMukkadam(activityId, pieceDate, mukkadam, percent) {
     try {
       const allocation = await api.allocateMukkadam(id, {
@@ -1742,6 +1760,7 @@ export default function ClusterPlaygroundPageV2() {
         percent,
       });
       await loadDayAllocations(pieceDate);
+      setPendingMukkadamPush(true);
       return { ok: true, allocation };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -1754,6 +1773,7 @@ export default function ClusterPlaygroundPageV2() {
     try {
       await api.unassignMukkadam(id, allocationId);
       await loadDayAllocations(pieceDate);
+      setPendingMukkadamPush(true);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -1767,6 +1787,8 @@ export default function ClusterPlaygroundPageV2() {
       const published = await api.publishClusterSchedule(id);
       track(posthog, "publish_calendar_clicked", { cluster_id: id, actor_role: user?.role });
       setScheduleInfo(published);
+      setPendingMukkadamPush(false);
+      setShowPublishReminder(false);
     } catch (e) {
       trackException(posthog, e);
       track(posthog, "publish_calendar_failed", { cluster_id: id });
@@ -1861,6 +1883,30 @@ export default function ClusterPlaygroundPageV2() {
               </>
             )}
             <div className="cluster-card__meta">{publishedStatusText}</div>
+
+            {showPublishReminder && (
+              <div className="publish-reminder">
+                <div className="publish-reminder__text">
+                  <strong>Mukkadam allocations are waiting to go out.</strong>
+                  <span>Your plan is saved, but allocations only reach the field team once you publish the calendar.</span>
+                </div>
+                <div className="publish-reminder__actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handlePublish}
+                    disabled={!scheduleInfo || hasUnsavedChanges || publishing}
+                    title={publishDisabledReason}
+                  >
+                    {publishing ? "Publishing…" : "Publish now"}
+                  </button>
+                  <button type="button" className="btn" onClick={() => setShowPublishReminder(false)}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
             {saveError && <p className="error-text">{saveError}</p>}
             {publishError && <p className="error-text">{publishError}</p>}
 
