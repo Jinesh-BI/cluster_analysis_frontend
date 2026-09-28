@@ -9,13 +9,14 @@
 // a separate section.
 //
 // Built on the mukkadam integration API's Farmer -> Mukkadam Payouts
-// endpoint (reference/am_integration_docs.md §11) via
-// useClusterMukkadamPayouts, re-grouped by mukkadam_id: one row per
-// mukkadam who did completed work for any of this cluster's farmers this
-// season, expandable to see exactly which farmer/plot/activity it was
-// for. The cluster's assigned head_mukkadam (contact info) is still
-// fetched and shown as a secondary identity line, since "who do I call"
-// is still useful — but it's no longer the card's headline figure.
+// endpoint (reference/am_integration_docs.md §11) — the `payouts` prop is
+// useClusterMukkadamPayouts's result, re-grouped by mukkadam_id: one row
+// per mukkadam who did completed work for any of this cluster's farmers
+// this season, expandable to see exactly which farmer/plot/activity it
+// was for. The cluster's assigned head_mukkadam (contact info) is still
+// fetched here directly and shown as a secondary identity line, since
+// "who do I call" is still useful — but it's no longer the card's
+// headline figure.
 //
 // The old Payments/Ledger tabs (the head_mukkadam's own advance/job/
 // weekly payment history, from a different endpoint) are commented out
@@ -31,7 +32,6 @@ import { formatCurrency } from "../utils/format";
 // import { useCountdown } from "../hooks/useCountdown";
 // import { track } from "../analytics/track";
 // import Tooltip from "./Tooltip";
-import { useClusterMukkadamPayouts } from "../hooks/useClusterMukkadamPayouts";
 import MukkadamPayoutRow from "./mukkadams/MukkadamPayoutRow";
 
 // --- Ledger tab (commented out — see file header) -------------------
@@ -95,7 +95,10 @@ import MukkadamPayoutRow from "./mukkadams/MukkadamPayoutRow";
 // }
 // ---------------------------------------------------------------------
 
-export default function MukkadamCard({ clusterId, deployed, farmerIds }) {
+// payouts = the useClusterMukkadamPayouts() result, called once by
+// ClusterDetailPage (and shared with ClusterFinancialSummary's payout
+// deduction) rather than fetched again here.
+export default function MukkadamCard({ clusterId, deployed, payouts }) {
   // const posthog = usePostHog();
   const [mukkadam, setMukkadam] = useState(undefined); // undefined = loading
   // const [showDetails, setShowDetails] = useState(false);
@@ -132,9 +135,7 @@ export default function MukkadamCard({ clusterId, deployed, farmerIds }) {
   //   return () => controller.abort();
   // }, [detailsTab, mukkadam, ledger]);
 
-  const { loading, error, mukkadamGroups, totals, notFoundFarmerIds } = useClusterMukkadamPayouts(
-    deployed ? farmerIds : null,
-  );
+  const { loading, error, mukkadamGroups, totals, notFoundFarmerIds } = payouts;
 
   // Before deploy, no completed work exists yet — same "nothing to show"
   // gate the old card used.

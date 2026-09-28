@@ -1,5 +1,5 @@
 // src/pages/ClusterDetailPage.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePostHog } from "@posthog/react";
 import { useParams, Link } from "react-router-dom";
 import { analyticsLogger } from "../analytics/logger";
@@ -13,9 +13,13 @@ import FarmerRow from "../components/FarmerRow";
 import MukkadamCard from "../components/MukkadamCard";
 import ShedCard from "../components/ShedCard";
 import ClusterVault from "../components/ClusterVault";
+import ClusterFinancialSummary from "../components/ClusterFinancialSummary";
 import FillRateDetail from "../components/FillRateDetail";
 import ClusterCosts from "../components/ClusterCosts";
 import { useAuth } from "../context/AuthContext";
+import { useClusterVault } from "../hooks/useClusterVault";
+import { useClusterMukkadamPayouts } from "../hooks/useClusterMukkadamPayouts";
+import { useClusterCosts } from "../hooks/useClusterCosts";
 import { formatCurrency } from "../utils/format";
 import { holidayDateMap } from "../utils/dates";
 
@@ -171,6 +175,33 @@ export default function ClusterDetailPage() {
   // Mukkadam Payouts endpoint takes — recomputed only when the actual
   // farmer list changes, not on every render.
   const farmerIds = useMemo(() => cluster?.farmers?.map((f) => f.farmer_id) ?? [], [cluster?.farmers]);
+
+  // Fetched once here (not inside ClusterVault/MukkadamCard/
+  // ClusterFinancialSummary themselves) so the cash-flow cards, the
+  // financial summary, AND the top-of-page "Net value" stat card all
+  // read from the same data instead of each re-fetching it.
+  const vaultState = useClusterVault(id);
+  const payoutsState = useClusterMukkadamPayouts(cluster?.deployed ? farmerIds : null);
+  const costsState = useClusterCosts(id, cluster?.deployed);
+
+  // Same formula as ClusterFinancialSummary: revenue served (farmer
+  // vault debits) minus mukkadam payouts minus cluster costs. null until
+  // every input has loaded, so the top stat card can show "—" instead of
+  // a misleadingly confident ₹0 mid-fetch.
+  const netValue = useMemo(() => {
+    if (!cluster?.deployed || !vaultState.vault || payoutsState.loading || costsState.totalSpent === null) {
+      return null;
+    }
+    return vaultState.totals.debit - payoutsState.totals.payout - costsState.totalSpent;
+  }, [cluster?.deployed, vaultState.vault, vaultState.totals.debit, payoutsState.loading, payoutsState.totals.payout, costsState.totalSpent]);
+
+  // Cluster Financials section anchor — the top "Net value" stat card
+  // scrolls here on click instead of navigating to a separate route,
+  // since it's all one page.
+  const financialsRef = useRef(null);
+  function scrollToFinancials() {
+    financialsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const calendarDayMap = useMemo(() => {
     const map = {};
@@ -353,6 +384,15 @@ export default function ClusterDetailPage() {
           <div className="stat-box__value">{formatCurrency(cluster.total_value)}</div>
           <div className="stat-box__label">Cluster value</div>
         </div>
+        <div
+          className={`stat-box ${netValue == null ? "" : netValue > 0 ? "stat-box--healthy" : netValue < 0 ? "stat-box--urgent" : "stat-box--value"}`}
+          style={{ cursor: "pointer" }}
+          onClick={scrollToFinancials}
+          title="Jump to Cluster Financials"
+        >
+          <div className="stat-box__value">{netValue == null ? "—" : formatCurrency(netValue)}</div>
+          <div className="stat-box__label">Net value</div>
+        </div>
       </div>
 
       <div className="checklist" style={{ marginBottom: 24 }}>
@@ -393,135 +433,153 @@ export default function ClusterDetailPage() {
         <p className="muted">Nothing coming up.</p>
       )}
 
-      <div className="erp-card" style={{ marginTop: 20 }}>
-        
-  {/* ERP Header Row with System Metadata */}
-  <div className="erp-card__header">
-    <div className="erp-card__title-group">
-      <h3 className="erp-card__title">Payment Coverage & Vault Audit</h3>
-    </div>
+      <h3 ref={financialsRef} style={{ marginTop: 8 }}>
+        Cluster Financials
+      </h3>
+      <p className="muted">
+        Money in from farmers, money out to the mukkadam, and other cluster costs — netted into one profit/loss figure.
+      </p>
 
-    {coverageStats.checked > 0 && (
-      <div className="erp-card__status-container">
-        {coverageStats.atRisk > 0 ? (
-          <div className="erp-status-badge erp-status-badge--critical">
-            <span className="erp-indicator-pulse"></span>
-            <span>CRITICAL: {coverageStats.atRisk} EXCEPTION(S)</span>
+      <ClusterFinancialSummary
+        deployed={cluster.deployed}
+        revenue={vaultState.totals.debit}
+        revenueLoading={!vaultState.vault && !vaultState.error}
+        vaultBalance={vaultState.totals.balance}
+        mukkadamPayout={payoutsState.totals.payout}
+        mukkadamLoading={payoutsState.loading}
+        costTotal={costsState.totalSpent}
+        costError={costsState.error}
+      />
+
+      <div className="cash-flow-row">
+        <ClusterVault clusterId={id} deployed={cluster.deployed} vault={vaultState.vault} error={vaultState.error} />
+        <MukkadamCard clusterId={id} deployed={cluster.deployed} payouts={payoutsState} />
+      </div>
+
+      <ClusterCosts clusterId={id} />
+
+      <ShedCard clusterId={id} />
+
+      <div className="erp-card" style={{ marginTop: 20 }}>
+
+        {/* ERP Header Row with System Metadata */}
+        <div className="erp-card__header">
+          <div className="erp-card__title-group">
+            <h3 className="erp-card__title">Payment Coverage & Vault Audit</h3>
           </div>
-        ) : (
-          <div className="erp-status-badge erp-status-badge--optimal">
-            <span>STATUS: OPTIMAL (100% FUNDED)</span>
+
+          {coverageStats.checked > 0 && (
+            <div className="erp-card__status-container">
+              {coverageStats.atRisk > 0 ? (
+                <div className="erp-status-badge erp-status-badge--critical">
+                  <span className="erp-indicator-pulse"></span>
+                  <span>CRITICAL: {coverageStats.atRisk} EXCEPTION(S)</span>
+                </div>
+              ) : (
+                <div className="erp-status-badge erp-status-badge--optimal">
+                  <span>STATUS: OPTIMAL (100% FUNDED)</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Progress Matrix / Data Loading State */}
+        {coverageStats.checked < coverageStats.total && (
+          <div className="erp-progress-panel">
+            <div className="erp-progress-row">
+              <span className="erp-data-label">Ledger Sync Progress:</span>
+              <span className="erp-data-value">{coverageStats.checked} / {coverageStats.total} Records Processed</span>
+            </div>
+            <div className="erp-progress-track">
+              <div
+                className="erp-progress-fill"
+                style={{ width: `${(coverageStats.checked / coverageStats.total) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+
+        {/* Exception Data Grid (ERP Table-like Structure) */}
+        {atRiskFarmers.length > 0 && (
+          <div className="erp-exception-block">
+            <div className="erp-alert-strip erp-alert-strip--warning">
+              <span className="erp-alert-code">Alert:</span>
+              <span className="erp-alert-message">
+                Execution halted for <strong>{coverageStats.uncoveredActivities}</strong> pending activities due to insufficient vault liquidity.
+              </span>
+            </div>
+
+            <div className="erp-data-table-container">
+              <div className="erp-table-header">
+                <span className="col-farmer">Farmer</span>
+                <span className="col-metric">Funding Ratio</span>
+                <span className="col-status">Risk Assessment</span>
+                <span className="col-action">Next Step</span>
+              </div>
+
+              <div className="erp-table-body">
+                {atRiskFarmers.map(({ farmer, coverage }) => {
+                  const covered = coverage.data.activities_covered;
+                  const total = coverage.data.upcoming_activities_total;
+                  const percentage = Math.round((covered / total) * 100);
+                  const severity = coverageSeverity(covered);
+
+                  return (
+                    <div
+                      key={farmer.farmer_id}
+                      className="erp-table-row"
+                      onClick={() => focusFarmer(farmer.farmer_id)}
+                    >
+                      <div className="col-farmer">
+                        <div className="erp-farmer-meta">
+                          <span className="erp-text-bold">{farmer.farmer_name}</span>
+                          <span className="erp-recommended-note">{severity.note}</span>
+                        </div>
+                      </div>
+
+                      <div className="col-metric">
+                        <span className="erp-numeric-stat">{covered} / {total}</span>
+                        <span className="erp-sub-stat">({percentage}%)</span>
+                      </div>
+
+                      <div className="col-status">
+                        <span className={`erp-inline-tag ${severity.tagClass}`}>{severity.label}</span>
+                      </div>
+
+                      <div className="col-action">
+                        <button type="button" className="erp-btn-link">
+                          View full details ↓
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Optimal System State */}
+        {atRiskFarmers.length === 0 && coverageStats.checked > 0 && (
+          <div className="erp-empty-panel erp-empty-panel--success">
+            <span className="erp-panel-icon">✔</span>
+            <div className="erp-panel-text">
+              <strong>All Systems Nominal:</strong> Verified {coverageStats.checked} accounts. No liquidity discrepancies identified. Execution queue is unlocked.
+            </div>
+          </div>
+        )}
+
+        {/* Initializing State */}
+        {coverageStats.checked === 0 && (
+          <div className="erp-empty-panel erp-empty-panel--neutral">
+            <span className="erp-panel-spinner">⟳</span>
+            <div className="erp-panel-text">
+              Querying core banking / vault infrastructure... Please wait.
+            </div>
           </div>
         )}
       </div>
-    )}
-  </div>
-
-  {/* Progress Matrix / Data Loading State */}
-  {coverageStats.checked < coverageStats.total && (
-    <div className="erp-progress-panel">
-      <div className="erp-progress-row">
-        <span className="erp-data-label">Ledger Sync Progress:</span>
-        <span className="erp-data-value">{coverageStats.checked} / {coverageStats.total} Records Processed</span>
-      </div>
-      <div className="erp-progress-track">
-        <div 
-          className="erp-progress-fill" 
-          style={{ width: `${(coverageStats.checked / coverageStats.total) * 100}%` }}
-        ></div>
-      </div>
-    </div>
-  )}
-
-  {/* Exception Data Grid (ERP Table-like Structure) */}
-  {atRiskFarmers.length > 0 && (
-    <div className="erp-exception-block">
-      <div className="erp-alert-strip erp-alert-strip--warning">
-        <span className="erp-alert-code">Alert:</span>
-        <span className="erp-alert-message">
-          Execution halted for <strong>{coverageStats.uncoveredActivities}</strong> pending activities due to insufficient vault liquidity.
-        </span>
-      </div>
-
-      <div className="erp-data-table-container">
-        <div className="erp-table-header">
-          <span className="col-farmer">Farmer</span>
-          <span className="col-metric">Funding Ratio</span>
-          <span className="col-status">Risk Assessment</span>
-          <span className="col-action">Next Step</span>
-        </div>
-
-        <div className="erp-table-body">
-          {atRiskFarmers.map(({ farmer, coverage }) => {
-            const covered = coverage.data.activities_covered;
-            const total = coverage.data.upcoming_activities_total;
-            const percentage = Math.round((covered / total) * 100);
-            const severity = coverageSeverity(covered);
-
-            return (
-              <div
-                key={farmer.farmer_id}
-                className="erp-table-row"
-                onClick={() => focusFarmer(farmer.farmer_id)}
-              >
-                <div className="col-farmer">
-                  <div className="erp-farmer-meta">
-                    <span className="erp-text-bold">{farmer.farmer_name}</span>
-                    <span className="erp-recommended-note">{severity.note}</span>
-                  </div>
-                </div>
-
-                <div className="col-metric">
-                  <span className="erp-numeric-stat">{covered} / {total}</span>
-                  <span className="erp-sub-stat">({percentage}%)</span>
-                </div>
-
-                <div className="col-status">
-                  <span className={`erp-inline-tag ${severity.tagClass}`}>{severity.label}</span>
-                </div>
-
-                <div className="col-action">
-                  <button type="button" className="erp-btn-link">
-                    View full details ↓
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  )}
-
-  {/* Optimal System State */}
-  {atRiskFarmers.length === 0 && coverageStats.checked > 0 && (
-    <div className="erp-empty-panel erp-empty-panel--success">
-      <span className="erp-panel-icon">✔</span>
-      <div className="erp-panel-text">
-        <strong>All Systems Nominal:</strong> Verified {coverageStats.checked} accounts. No liquidity discrepancies identified. Execution queue is unlocked.
-      </div>
-    </div>
-  )}
-
-  {/* Initializing State */}
-  {coverageStats.checked === 0 && (
-    <div className="erp-empty-panel erp-empty-panel--neutral">
-      <span className="erp-panel-spinner">⟳</span>
-      <div className="erp-panel-text">
-        Querying core banking / vault infrastructure... Please wait.
-      </div>
-    </div>
-  )}
-</div>
-
-      <h3 style={{ marginTop: 8 }}>Cash flow</h3>
-      <p className="muted">Money in from farmers, next to money out to the mukkadam.</p>
-      <div className="cash-flow-row">
-        <ClusterVault clusterId={id} deployed={cluster.deployed} />
-        <MukkadamCard clusterId={id} deployed={cluster.deployed} farmerIds={farmerIds} />
-      </div>
-
-      <ShedCard clusterId={id} />
 
       <div
         style={{
@@ -592,6 +650,7 @@ export default function ClusterDetailPage() {
             .join(", ")}
         </div>
       )}
+
       <Calendar
         getDayData={getDayDataWithHolidays}
         activeDate={selectedDay}
@@ -599,9 +658,6 @@ export default function ClusterDetailPage() {
         cellSize={CALENDAR_CELL_SIZE}
         visibleMonths={4}
       />
-
-      <h3 style={{ marginTop: 28 }}>Costs</h3>
-      <ClusterCosts clusterId={id} />
 
       <h3 style={{ marginTop: 28 }}>Farmers</h3>
       <p className="muted">Tap a farmer to see their payment activity.</p>

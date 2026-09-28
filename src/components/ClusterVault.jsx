@@ -14,7 +14,7 @@
 // the payout card's success green) and re-fielded for vault transactions
 // (credit/debit + activity) instead of completed allocations.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePostHog } from "@posthog/react";
 import {
   Box,
@@ -38,7 +38,6 @@ import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import ArrowDownwardRoundedIcon from "@mui/icons-material/ArrowDownwardRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
-import { api } from "../api/client";
 import { formatCurrency } from "../utils/format";
 import { track } from "../analytics/track";
 
@@ -281,10 +280,11 @@ function VaultFarmerRow({ farmer: f, open, onToggle }) {
   );
 }
 
-export default function ClusterVault({ clusterId, deployed }) {
+// vault/error come from useClusterVault, called once by ClusterDetailPage
+// (and shared with ClusterFinancialSummary's revenue figure) rather than
+// fetched again here.
+export default function ClusterVault({ clusterId, deployed, vault, error }) {
   const posthog = usePostHog();
-  const [vault, setVault] = useState(null); // { farmers, total_balance, overdue_count }
-  const [error, setError] = useState(null);
   const [openFarmerId, setOpenFarmerId] = useState(null);
 
   function handleToggleFarmer(farmerId) {
@@ -293,11 +293,6 @@ export default function ClusterVault({ clusterId, deployed }) {
     }
     setOpenFarmerId(openFarmerId === farmerId ? null : farmerId);
   }
-
-  useEffect(() => {
-    setVault(null);
-    api.getClusterVault(clusterId).then(setVault).catch((e) => setError(e.message));
-  }, [clusterId]);
 
   if (error) return <p className="error-text">{error}</p>;
 
