@@ -18,14 +18,19 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function request(path, { signal } = {}) {
+async function request(path, { signal, method = "GET", body } = {}) {
   const res = await fetch(`${MUKKADAM_INTEGRATION_BASE_URL}${path}`, {
     signal,
-    headers: { ...authHeaders() },
+    method,
+    headers: {
+      ...authHeaders(),
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || `Request failed (${res.status})`);
   }
   return res.json();
 }
@@ -159,4 +164,19 @@ export const mukkadamIntegrationApi = {
   // dateFrom, dateTo, metric, limit, workStatus }. See reference doc §10.
   getMukkadamLeaderboard: (filters, signal) =>
     request(`/tender/api/integration/mukkadams/insights/leaderboard/${buildLeaderboardQuery(filters)}`, { signal }),
+
+  // Given this season's farmer_ids, every completed allocation and what
+  // was actually paid to the mukkadam who did it — grouped by farmer
+  // (reference doc §11). Same nested `actual: {area, amount}` shape as
+  // insights/leaderboard; a farmer's own allocations can span several
+  // different mukkadams, which is what makes this the source for both
+  // "which mukkadam worked this farmer's land" and, re-grouped
+  // client-side, "which mukkadams worked in this cluster at all."
+  // farmerIds: array of string, max 500 (a single cluster's roster).
+  getFarmerMukkadamPayouts: (farmerIds, signal) =>
+    request(`/tender/api/integration/farmers/mukkadam-payouts/`, {
+      signal,
+      method: "POST",
+      body: { farmer_ids: farmerIds },
+    }),
 };

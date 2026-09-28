@@ -167,6 +167,11 @@ export default function ClusterDetailPage() {
     };
   }, [coverageByFarmer, cluster?.farmers?.length, atRiskFarmers]);
 
+  // This cluster's farmer roster, reduced to just the ids the Farmer →
+  // Mukkadam Payouts endpoint takes — recomputed only when the actual
+  // farmer list changes, not on every render.
+  const farmerIds = useMemo(() => cluster?.farmers?.map((f) => f.farmer_id) ?? [], [cluster?.farmers]);
+
   const calendarDayMap = useMemo(() => {
     const map = {};
     for (const d of calendar?.days || []) {
@@ -513,7 +518,7 @@ export default function ClusterDetailPage() {
       <p className="muted">Money in from farmers, next to money out to the mukkadam.</p>
       <div className="cash-flow-row">
         <ClusterVault clusterId={id} deployed={cluster.deployed} />
-        <MukkadamCard clusterId={id} deployed={cluster.deployed} />
+        <MukkadamCard clusterId={id} deployed={cluster.deployed} farmerIds={farmerIds} />
       </div>
 
       <ShedCard clusterId={id} />
