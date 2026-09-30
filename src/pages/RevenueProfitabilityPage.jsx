@@ -15,16 +15,21 @@
 // whole-call error state naming exactly what the API said, rather than
 // silently showing partial/stale data.
 import { useEffect, useMemo, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import {
   Alert,
   Box,
   Button,
+  Chip,
+  CircularProgress,
   IconButton,
   InputAdornment,
   MenuItem,
   Select,
   Skeleton,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -38,66 +43,61 @@ import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
 import Groups2OutlinedIcon from "@mui/icons-material/Groups2Outlined";
 import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlined";
 import SavingsRoundedIcon from "@mui/icons-material/SavingsRounded";
-import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
+// import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import TrendingDownRoundedIcon from "@mui/icons-material/TrendingDownRounded";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import UpdateOutlinedIcon from "@mui/icons-material/UpdateOutlined";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import { mukkadamIntegrationApi } from "../api/mukkadamIntegrationClient";
 import { formatCurrency } from "../utils/format";
-import { ALL } from "../components/mukkadams/tableUtils";
+import { useCountUp } from "../hooks/useCountUp";
+import { ALL, titleCase } from "../components/mukkadams/tableUtils";
 import { CLUSTER_STATUS, clusterFinancialStatus, formatPercent } from "../components/financials/financialUtils";
+import { STATUS_ICON } from "../components/financials/statusIcons";
 import ClusterFinancialsTable from "../components/financials/ClusterFinancialsTable";
-// import MukkadamEarnedWithdrawnSection from "../components/financials/MukkadamEarnedWithdrawnSection";
+import KpiTile from "../components/financials/KpiTile";
 
-function KpiTile({ icon: Icon, label, value, color = "text.primary", hero = false, tooltip }) {
-  return (
-    <Box
-      sx={{
-        flex: "1 1 200px",
-        minWidth: 190,
-        p: 2,
-        borderRadius: 1.5,
-        border: "1px solid",
-        borderColor: hero ? `${color}.light` : "divider",
-        bgcolor: hero ? (t) => alpha(t.palette[color]?.main ?? t.palette.grey[500], 0.06) : "background.paper",
-      }}
-    >
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
-        <Box
-          sx={{
-            display: "flex",
-            p: 0.65,
-            borderRadius: 1,
-            bgcolor: hero ? `${color}.main` : "action.selected",
-            color: hero ? "common.white" : "text.secondary",
-          }}
-        >
-          <Icon sx={{ fontSize: 16 }} />
-        </Box>
-        <Typography
-          variant="subtitle2"
-          color="text.secondary"
-          sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, fontSize: "0.66rem" }}
-        >
-          {label}
-        </Typography>
-        {tooltip && (
-          <Tooltip title={tooltip}>
-            <InfoOutlinedIcon sx={{ fontSize: 13, color: "text.disabled", cursor: "help" }} />
-          </Tooltip>
-        )}
-      </Stack>
-      <Typography variant="h6" sx={{ fontWeight: 800, color: hero ? `${color}.dark` : "text.primary" }}>
-        {value}
-      </Typography>
-    </Box>
-  );
+const STATUS_ORDER = ["healthy", "thin", "loss", "no_revenue"];
+
+// The deployment-status tab (All / Deployed / Not deployed / ...) — a
+// separate axis from the financial health status above. "All" is a UI-only
+// pseudo-value; every other tab is whatever raw `status` string a cluster
+// actually carries (reference doc §12 deliberately doesn't fix this to an
+// enum, so new status values the backend introduces show up as their own
+// tab automatically instead of silently missing one).
+const STATUS_TAB_ALL = "__all__";
+
+// KPIs/health gauge re-sum from whichever clusters are currently in scope
+// (the deployment-status tab) rather than trusting the API's own `totals`
+// — reference doc §12 explicitly warns `totals.*` are computed across
+// EVERY cluster regardless of status, so a "Deployed" tab showing 178
+// clusters would otherwise sit under a KPI row still reflecting all 195.
+function sumClusterTotals(clusters) {
+  const totals = { revenue_served: 0, mukkadam_payout: 0, cluster_cost: 0, cluster_net: 0, holding_balance: 0, overdue_count: 0 };
+  for (const c of clusters) {
+    totals.revenue_served += c.revenue_served || 0;
+    totals.mukkadam_payout += c.mukkadam_payout || 0;
+    totals.cluster_cost += c.cluster_cost || 0;
+    totals.cluster_net += c.cluster_net || 0;
+    totals.holding_balance += c.holding_balance || 0;
+    totals.overdue_count += c.overdue_count || 0;
+  }
+  return totals;
 }
 
-// Portfolio-health mix — "how many of our clusters are actually healthy"
-// answered as one glanceable segmented bar instead of making a reader
-// scroll the whole clusters table to form that impression themselves.
-function StatusMixBar({ clusters }) {
+function formatGeneratedAt(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// Portfolio-health — "how many of our clusters are actually healthy"
+// answered as a health-score-style radial gauge (the same visual language
+// credit/health scores use in most finance dashboards) plus a segmented
+// breakdown bar, instead of making a reader scroll the whole clusters
+// table to form that impression themselves.
+function PortfolioHealthCard({ clusters }) {
   const counts = useMemo(() => {
     const c = { healthy: 0, thin: 0, loss: 0, no_revenue: 0 };
     for (const cl of clusters) {
@@ -106,41 +106,72 @@ function StatusMixBar({ clusters }) {
     return c;
   }, [clusters]);
   const total = clusters.length || 1;
+  const healthyPct = (counts.healthy / total) * 100;
+  const animatedPct = useCountUp(healthyPct);
 
   return (
-    <Box sx={{ mb: 3 }}>
-      <Stack direction="row" sx={{ height: 10, borderRadius: 1, overflow: "hidden", mb: 1, gap: "2px" }}>
-        {["healthy", "thin", "loss", "no_revenue"].map((key) => {
-          const width = (counts[key] / total) * 100;
-          if (!width) return null;
-          return (
-            <Box
-              key={key}
-              sx={{
-                width: `${width}%`,
-                bgcolor:
-                  CLUSTER_STATUS[key].color === "default" ? "grey.400" : `${CLUSTER_STATUS[key].color}.main`,
-              }}
-            />
-          );
-        })}
-      </Stack>
-      <Stack direction="row" spacing={2.5} sx={{ flexWrap: "wrap" }}>
-        {["healthy", "thin", "loss", "no_revenue"].map((key) => (
-          <Stack key={key} direction="row" spacing={0.6} sx={{ alignItems: "center" }}>
-            <Box
-              sx={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                bgcolor: CLUSTER_STATUS[key].color === "default" ? "grey.400" : `${CLUSTER_STATUS[key].color}.main`,
-              }}
-            />
-            <Typography variant="caption" color="text.secondary">
-              {counts[key]} {CLUSTER_STATUS[key].label.toLowerCase()}
+    <Box sx={{ mb: 3, p: 2.5, borderRadius: 2, border: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
+        Portfolio Health
+      </Typography>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={3} sx={{ alignItems: "center" }}>
+        <Box sx={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+          <CircularProgress
+            variant="determinate"
+            value={100}
+            size={104}
+            thickness={4.5}
+            sx={{ color: (t) => alpha(t.palette.grey[500], 0.15), position: "absolute" }}
+          />
+          <CircularProgress
+            variant="determinate"
+            value={animatedPct}
+            size={104}
+            thickness={4.5}
+            sx={{ color: "success.main", "& .MuiCircularProgress-circle": { strokeLinecap: "round" } }}
+          />
+          <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1 }}>
+              {Math.round(animatedPct)}%
             </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Healthy
+            </Typography>
+          </Box>
+        </Box>
+
+        <Box sx={{ flex: 1, width: "100%" }}>
+          <Stack direction="row" sx={{ height: 10, borderRadius: 1, overflow: "hidden", mb: 1.5, gap: "2px" }}>
+            {STATUS_ORDER.map((key) => {
+              const width = (counts[key] / total) * 100;
+              if (!width) return null;
+              return (
+                <Box
+                  key={key}
+                  sx={{
+                    width: `${width}%`,
+                    bgcolor: CLUSTER_STATUS[key].color === "default" ? "grey.400" : `${CLUSTER_STATUS[key].color}.main`,
+                  }}
+                />
+              );
+            })}
           </Stack>
-        ))}
+          <Stack direction="row" spacing={2.5} sx={{ flexWrap: "wrap" }}>
+            {STATUS_ORDER.map((key) => {
+              const StatusIcon = STATUS_ICON[key];
+              return (
+                <Stack key={key} direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
+                  <StatusIcon
+                    sx={{ fontSize: 15, color: CLUSTER_STATUS[key].color === "default" ? "text.disabled" : `${CLUSTER_STATUS[key].color}.main` }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    {counts[key]} {CLUSTER_STATUS[key].label.toLowerCase()}
+                  </Typography>
+                </Stack>
+              );
+            })}
+          </Stack>
+        </Box>
       </Stack>
     </Box>
   );
@@ -148,10 +179,12 @@ function StatusMixBar({ clusters }) {
 
 export default function RevenueProfitabilityPage() {
   const [data, setData] = useState(null);
+  const [warming, setWarming] = useState(null); // { retry_after_seconds } while the cache is still being built
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(ALL);
+  const [deployTab, setDeployTab] = useState(STATUS_TAB_ALL);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -170,7 +203,18 @@ export default function RevenueProfitabilityPage() {
     mukkadamIntegrationApi
       .getBusinessClusterFinancials(controller.signal)
       .then((res) => {
-        if (!ignore) setData(res);
+        if (ignore) return;
+        // A 202 while the Redis cache is still (re)building looks like a
+        // normal successful response (2xx) to our fetch wrapper — has to be
+        // told apart from the real payload by its own `status: "warming"`
+        // shape, not by HTTP status code.
+        if (res?.status === "warming") {
+          setWarming(res);
+          setData(null);
+        } else {
+          setWarming(null);
+          setData(res);
+        }
       })
       .catch((err) => {
         if (!ignore && err.name !== "AbortError") setError(err.message);
@@ -184,32 +228,83 @@ export default function RevenueProfitabilityPage() {
     };
   }, [reloadTick]);
 
+  // Self-heals per the doc: a cache miss also enqueues its own refresh, so
+  // just wait out the suggested interval and check again rather than
+  // making the user manually hit Retry.
+  useEffect(() => {
+    if (!warming) return;
+    const timer = setTimeout(() => setReloadTick((t) => t + 1), (warming.retry_after_seconds || 15) * 1000);
+    return () => clearTimeout(timer);
+  }, [warming]);
+
   const clusters = useMemo(() => data?.clusters ?? [], [data]);
+
+  // Deployment-status tabs are dynamic (see STATUS_TAB_ALL above) — built
+  // from whatever keys cluster_status_counts actually has, "All" pinned first.
+  const deployTabs = useMemo(() => {
+    const counts = data?.cluster_status_counts ?? {};
+    return [
+      { key: STATUS_TAB_ALL, label: "All", count: data?.cluster_count ?? clusters.length },
+      ...Object.entries(counts).map(([key, count]) => ({ key, label: titleCase(key), count })),
+    ];
+  }, [data, clusters.length]);
+
+  const tabScopedClusters = useMemo(
+    () => (deployTab === STATUS_TAB_ALL ? clusters : clusters.filter((c) => c.status === deployTab)),
+    [clusters, deployTab],
+  );
 
   const filteredClusters = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return clusters.filter((c) => {
+    return tabScopedClusters.filter((c) => {
       if (term && !c.cluster_name.toLowerCase().includes(term)) return false;
       if (statusFilter === ALL) return true;
       return clusterFinancialStatus(c.cluster_net, c.revenue_served).key === statusFilter;
     });
-  }, [clusters, search, statusFilter]);
+  }, [tabScopedClusters, search, statusFilter]);
 
-  const totals = data?.totals;
+  const totals = data ? sumClusterTotals(tabScopedClusters) : null;
   const businessMargin = totals ? clusterFinancialStatus(totals.cluster_net, totals.revenue_served) : null;
+  const generatedAt = formatGeneratedAt(data?.generated_at);
 
   return (
     <Box className="page">
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 0.5 }}>
-        <TrendingUpOutlinedIcon sx={{ fontSize: 24, color: "text.secondary" }} />
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          Revenue &amp; Profitability
-        </Typography>
-      </Stack>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-        Every cluster&apos;s revenue, cost, and profit in one place — the business-wide view, not a single cluster&apos;s.
-        {data && ` Season ${data.season_code} · ${data.cluster_count} clusters.`}
-      </Typography>
+      <Box
+        sx={{
+          mb: 3,
+          p: 2.5,
+          borderRadius: 2,
+          border: "1px solid",
+          borderColor: "divider",
+          background: (t) => `linear-gradient(135deg, ${alpha(t.palette.primary.main, 0.09)} 0%, ${alpha(t.palette.primary.main, 0)} 65%)`,
+        }}
+      >
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ justifyContent: "space-between", alignItems: { sm: "center" } }}>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <Box sx={{ display: "flex", p: 1.1, borderRadius: 2, bgcolor: "primary.main", color: "common.white", flexShrink: 0 }}>
+              <TrendingUpOutlinedIcon sx={{ fontSize: 22 }} />
+            </Box>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                Revenue &amp; Profitability
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Every cluster&apos;s revenue, cost, and profit in one place — the business-wide view, not a single cluster&apos;s.
+              </Typography>
+            </Box>
+          </Stack>
+          {data && (
+            <Tooltip title="This is a point-in-time snapshot refreshed roughly every 4 hours, not a live query — figures can lag behind the very latest activity by design.">
+              <Chip
+                icon={<UpdateOutlinedIcon sx={{ fontSize: "15px !important" }} />}
+                label={`Season ${data.season_code} · ${data.cluster_count} clusters${generatedAt ? ` · as of ${generatedAt}` : ""}`}
+                variant="outlined"
+                sx={{ fontWeight: 600, bgcolor: "background.paper", flexShrink: 0, cursor: "help" }}
+              />
+            </Tooltip>
+          )}
+        </Stack>
+      </Box>
 
       {error ? (
         <Alert
@@ -221,6 +316,15 @@ export default function RevenueProfitabilityPage() {
           }
         >
           {error}
+        </Alert>
+      ) : warming ? (
+        // Cache miss (right after a fresh deploy, or a very first call in a
+        // new environment) — the backend already enqueued its own refresh,
+        // so this self-heals; just wait out the suggested interval and
+        // check again instead of asking the user to do anything.
+        <Alert severity="info" icon={<CircularProgress size={18} />}>
+          Generating the latest business financials — this refreshes automatically, checking again in{" "}
+          {warming.retry_after_seconds || 15}s…
         </Alert>
       ) : loading && !data ? (
         <>
@@ -241,32 +345,73 @@ export default function RevenueProfitabilityPage() {
         <Alert severity="warning">Received a response from the server, but it was missing the expected financial totals.</Alert>
       ) : (
         <>
+          <Tabs
+            value={deployTab}
+            onChange={(_, v) => setDeployTab(v)}
+            sx={{ mb: 2, minHeight: 40, borderBottom: "1px solid", borderColor: "divider" }}
+          >
+            {deployTabs.map((tab) => (
+              <Tab
+                key={tab.key}
+                value={tab.key}
+                sx={{ minHeight: 40, py: 0.5, textTransform: "none", fontWeight: 600 }}
+                label={
+                  <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
+                    <span>{tab.label}</span>
+                    <Chip size="small" label={tab.count} sx={{ height: 18, fontSize: 10.5 }} />
+                  </Stack>
+                }
+              />
+            ))}
+          </Tabs>
+
           <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", mb: 1 }}>
-            <KpiTile icon={PaidOutlinedIcon} label="Revenue served" value={formatCurrency(totals.revenue_served)} color="success" hero />
-            <KpiTile icon={Groups2OutlinedIcon} label="Mukkadam payouts" value={formatCurrency(totals.mukkadam_payout)} color="text.primary" />
-            <KpiTile icon={AccountBalanceOutlinedIcon} label="Cluster costs" value={formatCurrency(totals.cluster_cost)} color="text.primary" />
             <KpiTile
               icon={totals.cluster_net >= 0 ? TrendingUpRoundedIcon : TrendingDownRoundedIcon}
-              label={`Net (${formatPercent(businessMargin.margin)} margin)`}
-              value={formatCurrency(totals.cluster_net)}
+              label={`Net profit (${formatPercent(businessMargin.margin)} margin)`}
+              rawValue={totals.cluster_net}
+              format={formatCurrency}
               color={totals.cluster_net >= 0 ? "success" : "error"}
               hero
+              big
+            />
+            <KpiTile
+              icon={PaidOutlinedIcon}
+              label="Revenue served"
+              rawValue={totals.revenue_served}
+              format={formatCurrency}
+              color="success"
+              hero
+            />
+            <KpiTile
+              icon={Groups2OutlinedIcon}
+              label="Mukkadam payouts"
+              rawValue={totals.mukkadam_payout}
+              format={formatCurrency}
+            />
+            <KpiTile
+              icon={AccountBalanceOutlinedIcon}
+              label="Cluster costs"
+              rawValue={totals.cluster_cost}
+              format={formatCurrency}
             />
             <KpiTile
               icon={SavingsRoundedIcon}
               label="Vault holding"
-              value={formatCurrency(totals.holding_balance)}
+              rawValue={totals.holding_balance}
+              format={formatCurrency}
               tooltip="Prepaid farmer vault money still unspent across every cluster — not counted as revenue until it's actually spent on completed work."
             />
-            <KpiTile
+            {/* <KpiTile
               icon={WarningAmberOutlinedIcon}
               label="Overdue farmers"
-              value={totals.overdue_count}
+              rawValue={totals.overdue_count}
+              format={(v) => Math.round(v)}
               color={totals.overdue_count > 0 ? "error" : "text.primary"}
-            />
+            /> */}
           </Stack>
 
-          <StatusMixBar clusters={clusters} />
+          <PortfolioHealthCard clusters={tabScopedClusters} />
 
           <Stack direction="row" spacing={1.5} sx={{ mb: 2, flexWrap: "wrap", alignItems: "center" }}>
             <TextField
@@ -301,13 +446,24 @@ export default function RevenueProfitabilityPage() {
               ))}
             </Select>
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-              {filteredClusters.length} of {clusters.length} clusters
+              {filteredClusters.length} of {tabScopedClusters.length} clusters
             </Typography>
           </Stack>
 
           <ClusterFinancialsTable clusters={filteredClusters} />
 
-          {/* <MukkadamEarnedWithdrawnSection /> */}
+          {/* Mukkadam Earned vs. Withdrawn now lives on its own page (see
+              sidebar: Finance → Mukkadam Earnings) — it answers a distinct
+              question (labor payables) from this page's cluster P&L, so a
+              cross-link here replaces what used to be an inline section. */}
+          <Button
+            component={RouterLink}
+            to="/mukkadam-earnings"
+            endIcon={<ArrowForwardIcon fontSize="small" />}
+            sx={{ mt: 3 }}
+          >
+            View mukkadam earned vs. withdrawn
+          </Button>
         </>
       )}
     </Box>

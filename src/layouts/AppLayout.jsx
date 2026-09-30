@@ -14,12 +14,14 @@ import {
   AppBar,
   Box,
   Chip,
+  Divider,
   Drawer,
   IconButton,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  ListSubheader,
   Toolbar,
   Tooltip,
   Typography,
@@ -27,9 +29,10 @@ import {
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import Groups2OutlinedIcon from "@mui/icons-material/Groups2Outlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
-import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
+// import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import TrendingUpOutlinedIcon from "@mui/icons-material/TrendingUpOutlined";
+import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
 import SupervisorAccountOutlinedIcon from "@mui/icons-material/SupervisorAccountOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
@@ -42,12 +45,33 @@ const DRAWER_WIDTH = 240;
 const COLLAPSED_WIDTH = 72;
 const COLLAPSE_STORAGE_KEY = "sidebar_collapsed";
 
-const NAV_ITEMS = [
-  { label: "Overview", to: "/", icon: DashboardOutlinedIcon, exact: true },
-  { label: "Mukkadams", to: "/mukkadams", icon: Groups2OutlinedIcon },
-  { label: "Insights", to: "/mukkadams/insights", icon: InsightsOutlinedIcon },
-  { label: "Coverage Warnings", to: "/coverage-warnings", icon: WarningAmberOutlinedIcon },
-  // { label: "Payments", to: "/payments", icon: PaymentsOutlinedIcon },
+// Grouped by category (per user request) rather than one flat list, so
+// finance-facing pages read as one section instead of being scattered
+// among day-to-day ops pages. `managerOnly` items are dropped from their
+// section for non-manager-tier users; a section left with zero items
+// after that is dropped entirely rather than rendering an empty header.
+const NAV_SECTIONS = [
+  {
+    title: "Operations",
+    items: [
+      { label: "Overview", to: "/", icon: DashboardOutlinedIcon, exact: true },
+      { label: "Mukkadams", to: "/mukkadams", icon: Groups2OutlinedIcon },
+      { label: "Insights", to: "/mukkadams/insights", icon: InsightsOutlinedIcon },
+      // { label: "Payments", to: "/payments", icon: PaymentsOutlinedIcon },
+    ],
+  },
+  {
+    title: "Finance",
+    items: [
+      { label: "Coverage Warnings", to: "/coverage-warnings", icon: WarningAmberOutlinedIcon },
+      { label: "Revenue & Profitability", to: "/revenue-profitability", icon: TrendingUpOutlinedIcon, managerOnly: true },
+      { label: "Mukkadam Earnings", to: "/mukkadam-earnings", icon: PaidOutlinedIcon, managerOnly: true },
+    ],
+  },
+  {
+    title: "Administration",
+    items: [{ label: "Managers", to: "/managers", icon: SupervisorAccountOutlinedIcon, managerOnly: true }],
+  },
 ];
 
 export default function AppLayout() {
@@ -71,18 +95,18 @@ export default function AppLayout() {
     }
   }, [collapsed]);
 
-  const items = isManagerTier
-    ? [
-        ...NAV_ITEMS,
-        { label: "Revenue & Profitability", to: "/revenue-profitability", icon: TrendingUpOutlinedIcon },
-        { label: "Managers", to: "/managers", icon: SupervisorAccountOutlinedIcon },
-      ]
-    : NAV_ITEMS;
+  // Drop manager-only items per section, then drop any section left empty.
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => !item.managerOnly || isManagerTier),
+  })).filter((section) => section.items.length > 0);
+
+  const allItems = sections.flatMap((section) => section.items);
 
   // "/mukkadams/insights" satisfies both Mukkadams' and Insights' prefix
   // match — the most specific (longest) `to` wins, so only one item ever
   // lights up at once.
-  const activeTo = items
+  const activeTo = allItems
     .filter((item) => (item.exact ? location.pathname === item.to : location.pathname.startsWith(item.to)))
     .sort((a, b) => b.to.length - a.to.length)[0]?.to;
 
@@ -159,36 +183,52 @@ export default function AppLayout() {
           </Tooltip>
         </Box>
 
-        <List sx={{ px: 1 }}>
-          {items.map(({ label, to, icon: Icon }) => {
-            const selected = to === activeTo;
-            const button = (
-              <ListItemButton
-                key={to}
-                selected={selected}
-                onClick={() => navigate(to)}
-                sx={{
-                  borderRadius: 2,
-                  mb: 0.5,
-                  justifyContent: collapsed ? "center" : "flex-start",
-                  px: collapsed ? 1.5 : 2,
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: collapsed ? 0 : 36, justifyContent: "center" }}>
-                  <Icon fontSize="small" color={selected ? "primary" : "inherit"} />
-                </ListItemIcon>
-                {!collapsed && <ListItemText primary={label} />}
-              </ListItemButton>
-            );
-            return collapsed ? (
-              <Tooltip key={to} title={label} placement="right">
-                {button}
-              </Tooltip>
-            ) : (
-              button
-            );
-          })}
-        </List>
+        {sections.map((section, sectionIndex) => (
+          <List
+            key={section.title}
+            sx={{ px: 1, pt: 0 }}
+            subheader={
+              !collapsed && (
+                <ListSubheader
+                  component="div"
+                  sx={{ lineHeight: 2.2, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, bgcolor: "transparent" }}
+                >
+                  {section.title}
+                </ListSubheader>
+              )
+            }
+          >
+            {collapsed && sectionIndex > 0 && <Divider sx={{ mx: 1, my: 0.75 }} />}
+            {section.items.map(({ label, to, icon: Icon }) => {
+              const selected = to === activeTo;
+              const button = (
+                <ListItemButton
+                  key={to}
+                  selected={selected}
+                  onClick={() => navigate(to)}
+                  sx={{
+                    borderRadius: 2,
+                    mb: 0.5,
+                    justifyContent: collapsed ? "center" : "flex-start",
+                    px: collapsed ? 1.5 : 2,
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: collapsed ? 0 : 36, justifyContent: "center" }}>
+                    <Icon fontSize="small" color={selected ? "primary" : "inherit"} />
+                  </ListItemIcon>
+                  {!collapsed && <ListItemText primary={label} />}
+                </ListItemButton>
+              );
+              return collapsed ? (
+                <Tooltip key={to} title={label} placement="right">
+                  {button}
+                </Tooltip>
+              ) : (
+                button
+              );
+            })}
+          </List>
+        ))}
       </Drawer>
 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
