@@ -179,4 +179,27 @@ export const mukkadamIntegrationApi = {
       method: "POST",
       body: { farmer_ids: farmerIds },
     }),
+
+  // The primary "all clusters together" endpoint (reference doc §12) —
+  // revenue/cost/profit for every cluster in one response, plus a
+  // business-wide total. No params. Slow (one round trip per cluster
+  // server-side, ~195 clusters) and fails fast: a single cluster's
+  // vault-call failure fails the WHOLE request with a 502 naming which
+  // cluster/endpoint broke — callers should show a clear loading state
+  // and a "retry the whole call" error state, not partial data.
+  getBusinessClusterFinancials: (signal) =>
+    request(`/tender/api/integration/clusters/business-summary/`, { signal }),
+
+  // Mukkadam earned vs. withdrawn, current season only (reference doc
+  // §13). Omit mukkadamId for the business-wide shape (with by_mukkadam[]
+  // breakdown); search only applies in that business-wide shape and
+  // narrows both by_mukkadam AND the top-level earned/withdrawn totals
+  // server-side — it's a filter on the same view, not a separate lookup.
+  getMukkadamEarnedWithdrawn: ({ mukkadamId, search } = {}, signal) => {
+    const params = new URLSearchParams();
+    if (mukkadamId !== undefined && mukkadamId !== null) params.set("mukkadam_id", String(mukkadamId));
+    if (search) params.set("search", search);
+    const qs = params.toString();
+    return request(`/tender/api/integration/mukkadams/earned-withdrawn/${qs ? `?${qs}` : ""}`, { signal });
+  },
 };

@@ -46,17 +46,30 @@ export function useClusterMukkadamPayouts(farmerIds) {
       setLoading(false);
       return;
     }
+    // `ignore` guards every state setter, not just the AbortController —
+    // otherwise a stale/aborted run's own `.finally` can still flip
+    // `loading` to false after being superseded, landing consumers on
+    // "not loading, no error, no data" for a tick (see the identical bug
+    // fixed in RevenueProfitabilityPage's own fetch effect).
+    let ignore = false;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
     mukkadamIntegrationApi
       .getFarmerMukkadamPayouts(farmerIds, controller.signal)
-      .then(setData)
-      .catch((err) => {
-        if (err.name !== "AbortError") setError(err.message);
+      .then((res) => {
+        if (!ignore) setData(res);
       })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+      .catch((err) => {
+        if (!ignore && err.name !== "AbortError") setError(err.message);
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+      controller.abort();
+    };
   }, [farmerIds]);
 
   const mukkadamGroups = useMemo(() => regroupByMukkadam(data?.results ?? []), [data]);

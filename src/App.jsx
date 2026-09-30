@@ -13,6 +13,8 @@ import MukkadamDetailPage from "./pages/mukkadams/MukkadamDetailPage";
 import AllocationsInsightsPage from "./pages/mukkadams/AllocationsInsightsPage";
 import PaymentsPage from "./pages/PaymentsPage";
 import CoverageWarningsPage from "./pages/CoverageWarningsPage";
+import RevenueProfitabilityPage from "./pages/RevenueProfitabilityPage";
+import MukkadamEarnedWithdrawnPage from "./pages/MukkadamEarnedWithdrawnPage";
 import BugReportWidget from "./components/BugReportWidget";
 import "./styles.css";
 
@@ -47,6 +49,22 @@ export default function App() {
             <Route path="/mukkadams/:id" element={<MukkadamDetailPage />} />
             <Route path="/payments" element={<PaymentsPage />} />
             <Route path="/coverage-warnings" element={<CoverageWarningsPage />} />
+            <Route
+              path="/revenue-profitability"
+              element={
+                <ProtectedRoute requireManagerTier>
+                  <RevenueProfitabilityPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/mukkadam-earnings"
+              element={
+                <ProtectedRoute requireManagerTier>
+                  <MukkadamEarnedWithdrawnPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/managers"
               element={

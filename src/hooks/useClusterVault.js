@@ -19,12 +19,20 @@ export function useClusterVault(clusterId) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    let ignore = false;
     setVault(null);
     setError(null);
     api
       .getClusterVault(clusterId)
-      .then(setVault)
-      .catch((e) => setError(e.message));
+      .then((res) => {
+        if (!ignore) setVault(res);
+      })
+      .catch((e) => {
+        if (!ignore) setError(e.message);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [clusterId]);
 
   const totals = useMemo(() => {
