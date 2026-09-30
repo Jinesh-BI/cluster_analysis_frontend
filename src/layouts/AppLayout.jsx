@@ -29,6 +29,7 @@ import Groups2OutlinedIcon from "@mui/icons-material/Groups2Outlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
+import TrendingUpOutlinedIcon from "@mui/icons-material/TrendingUpOutlined";
 import SupervisorAccountOutlinedIcon from "@mui/icons-material/SupervisorAccountOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
@@ -71,7 +72,11 @@ export default function AppLayout() {
   }, [collapsed]);
 
   const items = isManagerTier
-    ? [...NAV_ITEMS, { label: "Managers", to: "/managers", icon: SupervisorAccountOutlinedIcon }]
+    ? [
+        ...NAV_ITEMS,
+        { label: "Revenue & Profitability", to: "/revenue-profitability", icon: TrendingUpOutlinedIcon },
+        { label: "Managers", to: "/managers", icon: SupervisorAccountOutlinedIcon },
+      ]
     : NAV_ITEMS;
 
   // "/mukkadams/insights" satisfies both Mukkadams' and Insights' prefix

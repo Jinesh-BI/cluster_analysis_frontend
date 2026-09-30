@@ -16,12 +16,20 @@ export function useClusterCosts(clusterId, deployed) {
 
   useEffect(() => {
     if (!deployed) return;
+    let ignore = false;
     setTotalSpent(null);
     setError(null);
     api
       .getClusterCosts(clusterId)
-      .then((res) => setTotalSpent(res.total_spent || 0))
-      .catch((e) => setError(e.message));
+      .then((res) => {
+        if (!ignore) setTotalSpent(res.total_spent || 0);
+      })
+      .catch((e) => {
+        if (!ignore) setError(e.message);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [clusterId, deployed]);
 
   return { totalSpent, error };
