@@ -971,6 +971,11 @@ function PlotRow({
                 >
                   <span className="move-line__mark" />
                   <span className="move-line__name">{block.activity_name || "Unnamed activity"}</span>
+                  {block.booking_id && (
+                    <span className="move-line__booking">
+                      BK·{block.booking_id}
+                    </span>
+                  )}
                   {block.completed && (
                     <span className="status-pill status-pill--pending" style={{ marginRight: 4 }}>
                       {isAdmin ? "Admin override" : "Completed"}
@@ -1064,6 +1069,7 @@ function PlanningWorkbench({
             block.plot_id,
             block.activity_id,
             block.date,
+            block.booking_id,
             effectiveDate(block),
           ]
             .filter(Boolean)
