@@ -31,9 +31,27 @@ function monthKey(date) {
   return date.getFullYear() * 12 + date.getMonth();
 }
 
-function planWindow(today = new Date()) {
+// `start` used to always be "today's month," which meant a cluster with
+// activities already on the calendar from an earlier month (the pasted
+// example: calendar days starting 2026-09-02) had no way to scroll back
+// to them in the planner. Now `start` opens at the earliest month actually
+// present in the calendar's own days[] when that's before today's month —
+// deliberately no floor/validation against "today": looking back at past
+// months is allowed, not just planning forward. `end` keeps its existing
+// anchor (today + PLANNING_MONTHS) regardless, so this only ever widens
+// the window backward, never shrinks the forward horizon.
+function planWindow(calendarDays, today = new Date()) {
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const earliestCalendarDate = (calendarDays || [])
+    .map((d) => parseLocalDate(d.date))
+    .filter(Boolean)
+    .sort((a, b) => a - b)[0];
+  const start =
+    earliestCalendarDate && earliestCalendarDate < currentMonthStart
+      ? new Date(earliestCalendarDate.getFullYear(), earliestCalendarDate.getMonth(), 1)
+      : currentMonthStart;
   return {
-    start: new Date(today.getFullYear(), today.getMonth(), 1),
+    start,
     end: new Date(today.getFullYear(), today.getMonth() + PLANNING_MONTHS, 0),
   };
 }
@@ -1512,7 +1530,6 @@ export default function ClusterPlaygroundPageV2() {
 
     trackGroup(posthog, "cluster", id, {});
     api.getCluster(id).then(setCluster).catch((e) => setError(e.message));
-    api.getCalendar(id).then(setReferenceCalendar).catch((e) => setError(e.message));
     api.getClusterHolidays(id).then(setHolidays).catch((e) => setError(e.message));
     // Supplementary picker data for mukkadam allocation — swallow errors
     // (including the documented 502 "tender unreachable" shape) rather
@@ -1525,18 +1542,25 @@ export default function ClusterPlaygroundPageV2() {
       api.getClusterPlayground(id),
       api.getClusterSchedule(id).catch((e) => (e.status === 404 ? { schedule: null } : Promise.reject(e))),
       api.getClusterVault(id).catch((e) => (e.status === 404 ? { farmers: [] } : Promise.reject(e))),
+      // Pulled into this same Promise.all (rather than its own independent
+      // fetch, as before) so its days[] are already in hand below when
+      // computing planWindow — a separate fetch could still be in flight
+      // at that point otherwise. Swallowed on failure (-> empty days) since
+      // a calendar hiccup shouldn't block the whole planner from loading.
+      api.getCalendar(id).catch(() => ({ days: [] })),
     ])
-      .then(([playgroundData, scheduleData, vaultData]) => {
+      .then(([playgroundData, scheduleData, vaultData, calendarData]) => {
         const schedule = scheduleData.schedule || null;
         setScheduleInfo(schedule);
         setVaultByFarmer(Object.fromEntries((vaultData.farmers || []).map((f) => [f.farmer_id, f])));
+        setReferenceCalendar(calendarData);
         dispatch({
           type: "INIT",
           blocks: playgroundData.blocks,
           savedPieces: indexSavedPieces(schedule?.data),
         });
 
-        const { start, end } = planWindow();
+        const { start, end } = planWindow(calendarData?.days);
         setPlanStartDate(start);
         setPlanEndDate(end);
       })
