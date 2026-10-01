@@ -373,6 +373,7 @@ function PlanningActivityRow({
   const [open, setOpen] = useState(false);
   const [pickedMukkadamId, setPickedMukkadamId] = useState("");
   const [pickedPercent, setPickedPercent] = useState(null);
+  const [allocatedWorkers, setAllocatedWorkers] = useState(1);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState(null);
   const [formError, setFormError] = useState(null);
@@ -384,6 +385,13 @@ function PlanningActivityRow({
   const percentOptions = [25, 50, 75, 100].filter((p) => p <= remainingPercent);
   const alreadyAllocatedIds = new Set(existingAllocations.map((a) => String(a.mukkadam_id)));
   const availableMukkadams = (deployedMukkadams || []).filter((m) => !alreadyAllocatedIds.has(String(m.mukkadam_id)));
+
+  // How many of the mukkadam's crew are actually working this piece —
+  // required, whole number, never less than 1 (you can't allocate zero or
+  // a fractional worker).
+  const workersNumber = Number(allocatedWorkers);
+  const workersInvalid =
+    allocatedWorkers === "" || !Number.isFinite(workersNumber) || !Number.isInteger(workersNumber) || workersNumber < 1;
 
   // Mukkadams can only be allocated to today or a future date — the crew
   // hasn't shown up yet to be assigned on a day that's already gone. Only
@@ -409,14 +417,24 @@ function PlanningActivityRow({
     const mukkadam = availableMukkadams.find((m) => String(m.mukkadam_id) === pickedMukkadamId);
     const percent = pickedPercent || percentOptions[percentOptions.length - 1];
     if (!mukkadam || !percent || !date || !onAllocateMukkadam) return;
+    if (workersInvalid) {
+      setFormError("Allocated workers must be a whole number of 1 or more.");
+      return;
+    }
     setSaving(true);
     setFormError(null);
-    const result = await onAllocateMukkadam(block.activity_id, date, mukkadam, percent);
+    const result = await onAllocateMukkadam(block.activity_id, date, mukkadam, percent, workersNumber);
     setSaving(false);
     if (result?.ok) {
-      track(posthog, "mukkadam_allocated_in_planner", { activity_id: block.activity_id, mukkadam_id: mukkadam.mukkadam_id, percent });
+      track(posthog, "mukkadam_allocated_in_planner", {
+        activity_id: block.activity_id,
+        mukkadam_id: mukkadam.mukkadam_id,
+        percent,
+        allocated_workers: workersNumber,
+      });
       setPickedMukkadamId("");
       setPickedPercent(null);
+      setAllocatedWorkers(1);
     } else {
       setFormError(result?.error || "Could not allocate this mukkadam.");
     }
@@ -471,7 +489,7 @@ function PlanningActivityRow({
             <div className="mukkadam-chips">
               {existingAllocations.map((a) => (
                 <span className="mukkadam-chip" key={a.allocation_id}>
-                  {a.mukkadam_name || a.mukkadam_id} &bull; {a.percent}%
+                  {a.mukkadam_name || a.mukkadam_id} &bull; ({a.allocated_workers}) &bull; {a.percent}%
                   {onUnassignMukkadam && (
                     <button
                       type="button"
@@ -525,10 +543,38 @@ function PlanningActivityRow({
                   </option>
                 ))}
               </select>
-              <button type="button" className="btn btn-primary" onClick={handleAllocate} disabled={!pickedMukkadamId || saving}>
+              <input
+                type="number"
+                name="allocated_workers"
+                className="input piece-row__select"
+                style={{ width: 92, borderColor: workersInvalid ? "var(--color-fail)" : undefined }}
+                min={1}
+                step={1}
+                value={allocatedWorkers}
+                onChange={(event) => {
+                  const raw = event.target.value;
+                  setAllocatedWorkers(raw === "" ? "" : Number(raw));
+                }}
+                aria-label="Number of workers allocated"
+                aria-invalid={workersInvalid}
+                title="Number of workers from this mukkadam's crew doing this piece"
+                placeholder="Workers"
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleAllocate}
+                disabled={!pickedMukkadamId || saving || workersInvalid}
+              >
                 {saving ? "Allocating…" : "Allocate"}
               </button>
             </div>
+          )}
+
+          {!effectiveDisabledReason && remainingPercent > 0 && date && workersInvalid && allocatedWorkers !== "" && (
+            <p className="error-text" style={{ margin: 0, fontSize: 12 }}>
+              Allocated workers must be a whole number of 1 or more.
+            </p>
           )}
 
           {formError && (
@@ -1756,7 +1802,7 @@ export default function ClusterPlaygroundPageV2() {
   // — but it DOES mean there's now something new for Publish to push out,
   // so it's tracked separately in `pendingMukkadamPush` for the reminder
   // shown after the next save.
-  async function handleAllocateMukkadam(activityId, pieceDate, mukkadam, percent) {
+  async function handleAllocateMukkadam(activityId, pieceDate, mukkadam, percent, allocatedWorkers) {
     try {
       const allocation = await api.allocateMukkadam(id, {
         activity_id: activityId,
@@ -1764,6 +1810,7 @@ export default function ClusterPlaygroundPageV2() {
         mukkadam_id: mukkadam.mukkadam_id,
         mukkadam_name: mukkadam.mukkadam_name,
         percent,
+        allocated_workers: allocatedWorkers,
       });
       await loadDayAllocations(pieceDate);
       setPendingMukkadamPush(true);
