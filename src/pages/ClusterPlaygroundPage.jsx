@@ -507,7 +507,7 @@ function PlanningActivityRow({
             <div className="mukkadam-chips">
               {existingAllocations.map((a) => (
                 <span className="mukkadam-chip" key={a.allocation_id}>
-                  {a.mukkadam_name || a.mukkadam_id} &bull; ({a.allocated_workers}) &bull; {a.percent}%
+                  {a.mukkadam_name || a.mukkadam_id} &bull; {a.allocated_workers} &bull; {a.percent}%
                   {onUnassignMukkadam && (
                     <button
                       type="button"
@@ -1719,7 +1719,22 @@ export default function ClusterPlaygroundPageV2() {
       const dayData = await api.getCalendarDay(id, day);
       const byActivity = {};
       for (const entry of dayData || []) {
-        if (entry.activity_id != null) byActivity[entry.activity_id] = entry.mukkadams || [];
+        if (entry.activity_id == null) continue;
+        // The calendar/day endpoint's `mukkadams[]` doesn't carry
+        // `allocated_workers` (unlike the playground endpoint's
+        // `mukkadam_allocations[]`, already loaded into `plan`). Backfill it
+        // here by matching allocation_id, so the chips show it regardless of
+        // which endpoint's serializer has caught up. `undefined` (key
+        // missing) is what triggers backfill — a genuine `null` from the
+        // backend means "not specified" and is left alone.
+        const workersByAllocationId = new Map(
+          (plan[entry.activity_id]?.mukkadam_allocations || []).map((a) => [a.allocation_id, a.allocated_workers])
+        );
+        byActivity[entry.activity_id] = (entry.mukkadams || []).map((m) =>
+          m.allocated_workers === undefined && workersByAllocationId.has(m.allocation_id)
+            ? { ...m, allocated_workers: workersByAllocationId.get(m.allocation_id) }
+            : m
+        );
       }
       setDayAllocations({ day, byActivity });
     } catch (e) {
