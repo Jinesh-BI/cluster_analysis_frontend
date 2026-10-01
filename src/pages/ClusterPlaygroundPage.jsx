@@ -31,9 +31,27 @@ function monthKey(date) {
   return date.getFullYear() * 12 + date.getMonth();
 }
 
-function planWindow(today = new Date()) {
+// `start` used to always be "today's month," which meant a cluster with
+// activities already on the calendar from an earlier month (the pasted
+// example: calendar days starting 2026-09-02) had no way to scroll back
+// to them in the planner. Now `start` opens at the earliest month actually
+// present in the calendar's own days[] when that's before today's month —
+// deliberately no floor/validation against "today": looking back at past
+// months is allowed, not just planning forward. `end` keeps its existing
+// anchor (today + PLANNING_MONTHS) regardless, so this only ever widens
+// the window backward, never shrinks the forward horizon.
+function planWindow(calendarDays, today = new Date()) {
+  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const earliestCalendarDate = (calendarDays || [])
+    .map((d) => parseLocalDate(d.date))
+    .filter(Boolean)
+    .sort((a, b) => a - b)[0];
+  const start =
+    earliestCalendarDate && earliestCalendarDate < currentMonthStart
+      ? new Date(earliestCalendarDate.getFullYear(), earliestCalendarDate.getMonth(), 1)
+      : currentMonthStart;
   return {
-    start: new Date(today.getFullYear(), today.getMonth(), 1),
+    start,
     end: new Date(today.getFullYear(), today.getMonth() + PLANNING_MONTHS, 0),
   };
 }
@@ -373,6 +391,7 @@ function PlanningActivityRow({
   const [open, setOpen] = useState(false);
   const [pickedMukkadamId, setPickedMukkadamId] = useState("");
   const [pickedPercent, setPickedPercent] = useState(null);
+  const [allocatedWorkers, setAllocatedWorkers] = useState(1);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState(null);
   const [formError, setFormError] = useState(null);
@@ -384,6 +403,13 @@ function PlanningActivityRow({
   const percentOptions = [25, 50, 75, 100].filter((p) => p <= remainingPercent);
   const alreadyAllocatedIds = new Set(existingAllocations.map((a) => String(a.mukkadam_id)));
   const availableMukkadams = (deployedMukkadams || []).filter((m) => !alreadyAllocatedIds.has(String(m.mukkadam_id)));
+
+  // How many of the mukkadam's crew are actually working this piece —
+  // required, whole number, never less than 1 (you can't allocate zero or
+  // a fractional worker).
+  const workersNumber = Number(allocatedWorkers);
+  const workersInvalid =
+    allocatedWorkers === "" || !Number.isFinite(workersNumber) || !Number.isInteger(workersNumber) || workersNumber < 1;
 
   // Mukkadams can only be allocated to today or a future date — the crew
   // hasn't shown up yet to be assigned on a day that's already gone. Only
@@ -409,14 +435,24 @@ function PlanningActivityRow({
     const mukkadam = availableMukkadams.find((m) => String(m.mukkadam_id) === pickedMukkadamId);
     const percent = pickedPercent || percentOptions[percentOptions.length - 1];
     if (!mukkadam || !percent || !date || !onAllocateMukkadam) return;
+    if (workersInvalid) {
+      setFormError("Allocated workers must be a whole number of 1 or more.");
+      return;
+    }
     setSaving(true);
     setFormError(null);
-    const result = await onAllocateMukkadam(block.activity_id, date, mukkadam, percent);
+    const result = await onAllocateMukkadam(block.activity_id, date, mukkadam, percent, workersNumber);
     setSaving(false);
     if (result?.ok) {
-      track(posthog, "mukkadam_allocated_in_planner", { activity_id: block.activity_id, mukkadam_id: mukkadam.mukkadam_id, percent });
+      track(posthog, "mukkadam_allocated_in_planner", {
+        activity_id: block.activity_id,
+        mukkadam_id: mukkadam.mukkadam_id,
+        percent,
+        allocated_workers: workersNumber,
+      });
       setPickedMukkadamId("");
       setPickedPercent(null);
+      setAllocatedWorkers(1);
     } else {
       setFormError(result?.error || "Could not allocate this mukkadam.");
     }
@@ -471,7 +507,7 @@ function PlanningActivityRow({
             <div className="mukkadam-chips">
               {existingAllocations.map((a) => (
                 <span className="mukkadam-chip" key={a.allocation_id}>
-                  {a.mukkadam_name || a.mukkadam_id} &bull; {a.percent}%
+                  {a.mukkadam_name || a.mukkadam_id} &bull; {a.allocated_workers} &bull; {a.percent}%
                   {onUnassignMukkadam && (
                     <button
                       type="button"
@@ -525,10 +561,38 @@ function PlanningActivityRow({
                   </option>
                 ))}
               </select>
-              <button type="button" className="btn btn-primary" onClick={handleAllocate} disabled={!pickedMukkadamId || saving}>
+              <input
+                type="number"
+                name="allocated_workers"
+                className="input piece-row__select"
+                style={{ width: 92, borderColor: workersInvalid ? "var(--color-fail)" : undefined }}
+                min={1}
+                step={1}
+                value={allocatedWorkers}
+                onChange={(event) => {
+                  const raw = event.target.value;
+                  setAllocatedWorkers(raw === "" ? "" : Number(raw));
+                }}
+                aria-label="Number of workers allocated"
+                aria-invalid={workersInvalid}
+                title="Number of workers from this mukkadam's crew doing this piece"
+                placeholder="Workers"
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleAllocate}
+                disabled={!pickedMukkadamId || saving || workersInvalid}
+              >
                 {saving ? "Allocating…" : "Allocate"}
               </button>
             </div>
+          )}
+
+          {!effectiveDisabledReason && remainingPercent > 0 && date && workersInvalid && allocatedWorkers !== "" && (
+            <p className="error-text" style={{ margin: 0, fontSize: 12 }}>
+              Allocated workers must be a whole number of 1 or more.
+            </p>
           )}
 
           {formError && (
@@ -1466,7 +1530,6 @@ export default function ClusterPlaygroundPageV2() {
 
     trackGroup(posthog, "cluster", id, {});
     api.getCluster(id).then(setCluster).catch((e) => setError(e.message));
-    api.getCalendar(id).then(setReferenceCalendar).catch((e) => setError(e.message));
     api.getClusterHolidays(id).then(setHolidays).catch((e) => setError(e.message));
     // Supplementary picker data for mukkadam allocation — swallow errors
     // (including the documented 502 "tender unreachable" shape) rather
@@ -1479,18 +1542,25 @@ export default function ClusterPlaygroundPageV2() {
       api.getClusterPlayground(id),
       api.getClusterSchedule(id).catch((e) => (e.status === 404 ? { schedule: null } : Promise.reject(e))),
       api.getClusterVault(id).catch((e) => (e.status === 404 ? { farmers: [] } : Promise.reject(e))),
+      // Pulled into this same Promise.all (rather than its own independent
+      // fetch, as before) so its days[] are already in hand below when
+      // computing planWindow — a separate fetch could still be in flight
+      // at that point otherwise. Swallowed on failure (-> empty days) since
+      // a calendar hiccup shouldn't block the whole planner from loading.
+      api.getCalendar(id).catch(() => ({ days: [] })),
     ])
-      .then(([playgroundData, scheduleData, vaultData]) => {
+      .then(([playgroundData, scheduleData, vaultData, calendarData]) => {
         const schedule = scheduleData.schedule || null;
         setScheduleInfo(schedule);
         setVaultByFarmer(Object.fromEntries((vaultData.farmers || []).map((f) => [f.farmer_id, f])));
+        setReferenceCalendar(calendarData);
         dispatch({
           type: "INIT",
           blocks: playgroundData.blocks,
           savedPieces: indexSavedPieces(schedule?.data),
         });
 
-        const { start, end } = planWindow();
+        const { start, end } = planWindow(calendarData?.days);
         setPlanStartDate(start);
         setPlanEndDate(end);
       })
@@ -1649,7 +1719,22 @@ export default function ClusterPlaygroundPageV2() {
       const dayData = await api.getCalendarDay(id, day);
       const byActivity = {};
       for (const entry of dayData || []) {
-        if (entry.activity_id != null) byActivity[entry.activity_id] = entry.mukkadams || [];
+        if (entry.activity_id == null) continue;
+        // The calendar/day endpoint's `mukkadams[]` doesn't carry
+        // `allocated_workers` (unlike the playground endpoint's
+        // `mukkadam_allocations[]`, already loaded into `plan`). Backfill it
+        // here by matching allocation_id, so the chips show it regardless of
+        // which endpoint's serializer has caught up. `undefined` (key
+        // missing) is what triggers backfill — a genuine `null` from the
+        // backend means "not specified" and is left alone.
+        const workersByAllocationId = new Map(
+          (plan[entry.activity_id]?.mukkadam_allocations || []).map((a) => [a.allocation_id, a.allocated_workers])
+        );
+        byActivity[entry.activity_id] = (entry.mukkadams || []).map((m) =>
+          m.allocated_workers === undefined && workersByAllocationId.has(m.allocation_id)
+            ? { ...m, allocated_workers: workersByAllocationId.get(m.allocation_id) }
+            : m
+        );
       }
       setDayAllocations({ day, byActivity });
     } catch (e) {
@@ -1756,7 +1841,7 @@ export default function ClusterPlaygroundPageV2() {
   // — but it DOES mean there's now something new for Publish to push out,
   // so it's tracked separately in `pendingMukkadamPush` for the reminder
   // shown after the next save.
-  async function handleAllocateMukkadam(activityId, pieceDate, mukkadam, percent) {
+  async function handleAllocateMukkadam(activityId, pieceDate, mukkadam, percent, allocatedWorkers) {
     try {
       const allocation = await api.allocateMukkadam(id, {
         activity_id: activityId,
@@ -1764,6 +1849,7 @@ export default function ClusterPlaygroundPageV2() {
         mukkadam_id: mukkadam.mukkadam_id,
         mukkadam_name: mukkadam.mukkadam_name,
         percent,
+        allocated_workers: allocatedWorkers,
       });
       await loadDayAllocations(pieceDate);
       setPendingMukkadamPush(true);
