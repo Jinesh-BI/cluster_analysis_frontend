@@ -21,6 +21,7 @@ import {
   Alert,
   Avatar,
   Box,
+  Button,
   Chip,
   Fade,
   IconButton,
@@ -36,13 +37,17 @@ import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import RefreshOutlinedIcon from "@mui/icons-material/RefreshOutlined";
 import HourglassTopOutlinedIcon from "@mui/icons-material/HourglassTopOutlined";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
+import BlockOutlinedIcon from "@mui/icons-material/BlockOutlined";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
 import { mukkadamIntegrationApi } from "../../api/mukkadamIntegrationClient";
 import { formatCurrency } from "../../utils/format";
 import { useCountUp } from "../../hooks/useCountUp";
+import { useAuth } from "../../context/AuthContext";
 import AllocationsTable from "../../components/mukkadams/AllocationsTable";
 import PaymentsTable from "../../components/mukkadams/PaymentsTable";
 import LedgerTable from "../../components/mukkadams/LedgerTable";
 import MaturingTable from "../../components/mukkadams/MaturingTable";
+import CanRequestPaymentModal from "../../components/mukkadams/CanRequestPaymentModal";
 import { titleCase } from "../../components/mukkadams/tableUtils";
 import { track, trackGroup } from "../../analytics/track";
 
@@ -107,10 +112,12 @@ export default function MukkadamDetailPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const directoryContext = location.state?.mukkadam;
+  const { isManagerTier } = useAuth();
 
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [canRequestModalOpen, setCanRequestModalOpen] = useState(false);
 
   const activeTab = TABS.includes(searchParams.get("tab")) ? searchParams.get("tab") : "allocations";
 
@@ -243,6 +250,13 @@ export default function MukkadamDetailPage() {
                       color={mukkadam.is_tender_signed ? "success" : "default"}
                       variant={mukkadam.is_tender_signed ? "filled" : "outlined"}
                     />
+                    <Chip
+                      size="small"
+                      icon={mukkadam.can_request_payment ? <CheckCircleOutlineIcon /> : <BlockOutlinedIcon />}
+                      label={mukkadam.can_request_payment ? "Can request payment" : "Payment requests blocked"}
+                      color={mukkadam.can_request_payment ? "success" : "error"}
+                      variant={mukkadam.can_request_payment ? "filled" : "outlined"}
+                    />
                     {directoryContext?.manual_status !== undefined && (
                       <Chip
                         size="small"
@@ -269,14 +283,27 @@ export default function MukkadamDetailPage() {
             </Box>
           </Stack>
 
-          {overview?.season_code && (
-            <Stack sx={{ alignItems: { md: "flex-end" } }}>
-              <Typography variant="caption" color="text.secondary">
-                Season
-              </Typography>
-              <Chip size="small" label={overview.season_code} color="primary" variant="outlined" />
-            </Stack>
-          )}
+          <Stack spacing={1.5} sx={{ alignItems: { md: "flex-end" } }}>
+            {overview?.season_code && (
+              <Stack sx={{ alignItems: { md: "flex-end" } }}>
+                <Typography variant="caption" color="text.secondary">
+                  Season
+                </Typography>
+                <Chip size="small" label={overview.season_code} color="primary" variant="outlined" />
+              </Stack>
+            )}
+            {isManagerTier && mukkadam && (
+              <Button
+                size="small"
+                variant="outlined"
+                color={mukkadam.can_request_payment ? "error" : "success"}
+                startIcon={mukkadam.can_request_payment ? <BlockOutlinedIcon /> : <CheckCircleOutlineIcon />}
+                onClick={() => setCanRequestModalOpen(true)}
+              >
+                {mukkadam.can_request_payment ? "Block payment requests" : "Allow payment requests"}
+              </Button>
+            )}
+          </Stack>
         </Stack>
 
         <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap" }}>
@@ -350,6 +377,16 @@ export default function MukkadamDetailPage() {
           )}
         </Box>
       </Fade>
+
+      <CanRequestPaymentModal
+        open={canRequestModalOpen}
+        mukkadam={mukkadam}
+        onClose={() => setCanRequestModalOpen(false)}
+        onUpdated={() => {
+          setCanRequestModalOpen(false);
+          load();
+        }}
+      />
     </Box>
   );
 }
