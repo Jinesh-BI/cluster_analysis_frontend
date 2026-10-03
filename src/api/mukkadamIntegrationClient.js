@@ -190,6 +190,21 @@ export const mukkadamIntegrationApi = {
   getBusinessClusterFinancials: (signal) =>
     request(`/tender/api/integration/clusters/business-summary/`, { signal }),
 
+  // Enable/disable a mukkadam's ability to raise payment requests from the
+  // app (reference doc integration-mukkadam-can-request-payment.md).
+  // `reason`/`amId` are append-only history entries — omit or leave blank
+  // to leave that history untouched; the flag itself always updates.
+  updateCanRequestPayment: (mukkadamId, { canRequestPayment, reason, amId } = {}, signal) =>
+    request(`/tender/api/integration/mukkadams/${mukkadamId}/can-request-payment/`, {
+      signal,
+      method: "PATCH",
+      body: {
+        can_request_payment: canRequestPayment,
+        ...(reason ? { reason } : {}),
+        ...(amId ? { am_id: amId } : {}),
+      },
+    }),
+
   // Mukkadam earned vs. withdrawn, current season only (reference doc
   // §13). Omit mukkadamId for the business-wide shape (with by_mukkadam[]
   // breakdown); search only applies in that business-wide shape and
