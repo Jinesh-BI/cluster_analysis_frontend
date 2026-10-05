@@ -37,6 +37,10 @@ import BlockOutlinedIcon from "@mui/icons-material/BlockOutlined";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
 import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
+import RequestQuoteOutlinedIcon from "@mui/icons-material/RequestQuoteOutlined";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
+import TrendingDownOutlinedIcon from "@mui/icons-material/TrendingDownOutlined";
+import PersonOutlineOutlinedIcon from "@mui/icons-material/PersonOutlineOutlined";
 import { opsApi } from "../api/opsClient";
 import { formatCurrency } from "../utils/format";
 import { useCountUp } from "../hooks/useCountUp";
@@ -113,6 +117,108 @@ function KpiTile({ icon: Icon, label, value, color = "text.primary", hero = fals
       <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: "-0.5px", color: hero ? `${color}.dark` : "text.primary" }}>
         {Math.round(animated)}
       </Typography>
+    </Box>
+  );
+}
+
+// One hero figure per view (the total receivable), with three supporting
+// stats alongside it — never a second hero number competing for attention.
+function StatColumn({ icon: Icon, label, value, caption }) {
+  return (
+    <Stack spacing={0.25} sx={{ minWidth: 150 }}>
+      <Stack direction="row" spacing={0.6} sx={{ alignItems: "center" }}>
+        <Icon sx={{ fontSize: 16, color: "text.secondary" }} />
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.68rem" }}
+        >
+          {label}
+        </Typography>
+      </Stack>
+      <Typography variant="h6" sx={{ fontWeight: 800, color: "text.primary" }}>
+        {value}
+      </Typography>
+      {caption && (
+        <Typography variant="caption" color="text.secondary">
+          {caption}
+        </Typography>
+      )}
+    </Stack>
+  );
+}
+
+function CollectionsHeroCard({ totalReceivable, farmerCount, avgReceivable, largestDebtor }) {
+  const animated = useCountUp(totalReceivable);
+  return (
+    <Box
+      sx={{
+        mb: 3,
+        p: 3,
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: "error.light",
+        bgcolor: (theme) => alpha(theme.palette.error.main, 0.06),
+      }}
+    >
+      <Stack direction={{ xs: "column", lg: "row" }} spacing={3} sx={{ alignItems: { lg: "center" } }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center", flex: "1 1 320px" }}>
+          <Box
+            sx={{
+              display: "flex",
+              p: 1.25,
+              borderRadius: 2,
+              bgcolor: "error.main",
+              color: "common.white",
+              flexShrink: 0,
+            }}
+          >
+            <RequestQuoteOutlinedIcon sx={{ fontSize: 26 }} />
+          </Box>
+          <Box>
+            <Typography
+              variant="subtitle2"
+              color="text.secondary"
+              sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, fontSize: "0.72rem" }}
+            >
+              Total to collect from farmers
+            </Typography>
+            <Typography
+              sx={{
+                fontWeight: 800,
+                fontSize: { xs: "2rem", sm: "2.5rem" },
+                lineHeight: 1.1,
+                letterSpacing: "-0.5px",
+                color: "error.dark",
+                fontVariantNumeric: "normal",
+              }}
+            >
+              {formatCurrency(animated)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+              Outstanding across every farmer currently in negative vault balance.
+            </Typography>
+          </Box>
+        </Stack>
+
+        <Stack
+          direction="row"
+          spacing={{ xs: 2.5, md: 4 }}
+          useFlexGap
+          sx={{ flexWrap: "wrap", pl: { lg: 3 }, borderLeft: { lg: "1px solid" }, borderColor: { lg: "divider" } }}
+        >
+          <StatColumn icon={GroupsOutlinedIcon} label="Farmers in deficit" value={farmerCount} />
+          {/* <StatColumn icon={TrendingDownOutlinedIcon} label="Average owed" value={formatCurrency(avgReceivable)} /> */}
+          {largestDebtor && (
+            <StatColumn
+              icon={PersonOutlineOutlinedIcon}
+              label="Largest single debtor"
+              value={formatCurrency(Math.abs(Number(largestDebtor.vault_balance)))}
+              caption={farmerLabel(largestDebtor)}
+            />
+          )}
+        </Stack>
+      </Stack>
     </Box>
   );
 }
@@ -225,6 +331,21 @@ export default function CoverageWarningsPage() {
   const holdList = useMemo(() => merged.filter((f) => f.activities_covered === 0), [merged]);
   const limitedList = useMemo(() => merged.filter((f) => f.activities_covered > 0), [merged]);
 
+  const negativeFarmers = useMemo(() => merged.filter((f) => Number(f.vault_balance) < 0), [merged]);
+  const totalReceivable = useMemo(
+    () => negativeFarmers.reduce((sum, f) => sum + Math.abs(Number(f.vault_balance)), 0),
+    [negativeFarmers],
+  );
+  const avgReceivable = negativeFarmers.length ? totalReceivable / negativeFarmers.length : 0;
+  const largestDebtor = useMemo(
+    () =>
+      negativeFarmers.reduce(
+        (max, f) => (!max || Math.abs(Number(f.vault_balance)) > Math.abs(Number(max.vault_balance)) ? f : max),
+        null,
+      ),
+    [negativeFarmers],
+  );
+
   return (
     <Box className="page">
       <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
@@ -238,13 +359,25 @@ export default function CoverageWarningsPage() {
       {error ? (
         <Alert severity="error">{error}</Alert>
       ) : loading && !data ? (
-        <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", mb: 3 }}>
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} variant="rounded" sx={{ flex: "1 1 220px", minWidth: 200, height: 96 }} />
-          ))}
-        </Stack>
+        <>
+          <Skeleton variant="rounded" sx={{ mb: 3, height: 128 }} />
+          <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", mb: 3 }}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} variant="rounded" sx={{ flex: "1 1 220px", minWidth: 200, height: 96 }} />
+            ))}
+          </Stack>
+        </>
       ) : (
         <>
+          {negativeFarmers.length > 0 && (
+            <CollectionsHeroCard
+              totalReceivable={totalReceivable}
+              farmerCount={negativeFarmers.length}
+              avgReceivable={avgReceivable}
+              largestDebtor={largestDebtor}
+            />
+          )}
+
           <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: "wrap", mb: 3 }}>
             <KpiTile icon={BlockOutlinedIcon} label="Hold immediately" value={holdList.length} color="error" hero />
             <KpiTile
