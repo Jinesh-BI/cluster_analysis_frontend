@@ -47,7 +47,14 @@ export default function App() {
             <Route path="/mukkadams" element={<MukkadamsListPage />} />
             <Route path="/mukkadams/insights" element={<AllocationsInsightsPage />} />
             <Route path="/mukkadams/:id" element={<MukkadamDetailPage />} />
-            <Route path="/payments" element={<PaymentsPage />} />
+            <Route
+              path="/mukkadam-payments"
+              element={
+                <ProtectedRoute requireManagerTier>
+                  <PaymentsPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/coverage-warnings" element={<CoverageWarningsPage />} />
             <Route
               path="/revenue-profitability"
