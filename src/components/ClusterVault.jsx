@@ -80,6 +80,7 @@ function TransactionsTable({ transactions }) {
         <TableHead>
           <TableRow>
             <TableCell sx={HEAD_CELL_SX}>Description</TableCell>
+            <TableCell sx={HEAD_CELL_SX}>Plot</TableCell>
             <TableCell sx={HEAD_CELL_SX}>Type</TableCell>
             <TableCell sx={HEAD_CELL_SX}>Date</TableCell>
             <TableCell sx={{ ...HEAD_CELL_SX, textAlign: "right" }}>Amount</TableCell>
@@ -99,6 +100,11 @@ function TransactionsTable({ transactions }) {
                       {[t.variety, t.acre ? `${t.acre} ac` : null].filter(Boolean).join(" · ")}
                     </Typography>
                   )}
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2" sx={{ fontWeight: 400, color: "text.primary" }} noWrap>
+                    {t.plot_id || "—"}
+                  </Typography>
                 </TableCell>
                 <TableCell>
                   <TransactionType type={t.type} />
