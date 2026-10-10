@@ -93,6 +93,21 @@ function buildInsightsQuery({ date, dateFrom, dateTo, mukkadamId, search, workSt
   return qs ? `?${qs}` : "";
 }
 
+// Same "omit means all" rule again, plus the current-season-payments-
+// specific page/page_size (the API clamps page_size to 200, not rejects).
+function buildCurrentSeasonPaymentsQuery({ mukkadamId, mukkadamName, fromDate, toDate, paymentStatus, page, pageSize } = {}) {
+  const params = new URLSearchParams();
+  if (mukkadamId !== undefined && mukkadamId !== null) params.set("mukkadam_id", String(mukkadamId));
+  if (mukkadamName) params.set("mukkadam_name", mukkadamName);
+  if (fromDate) params.set("from_date", fromDate);
+  if (toDate) params.set("to_date", toDate);
+  if (paymentStatus) params.set("payment_status", paymentStatus);
+  if (page) params.set("page", String(page));
+  if (pageSize) params.set("page_size", String(pageSize));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
 function buildTrendQuery({ dateFrom, dateTo, granularity, mukkadamId } = {}) {
   const params = new URLSearchParams();
   if (dateFrom) params.set("date_from", dateFrom);
@@ -189,6 +204,17 @@ export const mukkadamIntegrationApi = {
   // and a "retry the whole call" error state, not partial data.
   getBusinessClusterFinancials: (signal) =>
     request(`/tender/api/integration/clusters/business-summary/`, { signal }),
+
+  // Raw MukkadamPayment records for the current season, across all
+  // deployed mukkadams by default (reference doc §14). Properly
+  // paginated — use `pagination.count`/`has_next`, don't assume one call
+  // returns everything. filters: { mukkadamId, mukkadamName, fromDate,
+  // toDate, paymentStatus, page, pageSize }. `mukkadamName` is a partial,
+  // case-insensitive match — it's the search box, not an exact lookup.
+  getCurrentSeasonPayments: (filters, signal) =>
+    request(`/tender/api/integration/mukkadams/payments/current-season/${buildCurrentSeasonPaymentsQuery(filters)}`, {
+      signal,
+    }),
 
   // Enable/disable a mukkadam's ability to raise payment requests from the
   // app (reference doc integration-mukkadam-can-request-payment.md).

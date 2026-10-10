@@ -29,7 +29,7 @@ import {
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import Groups2OutlinedIcon from "@mui/icons-material/Groups2Outlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
-// import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
+import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import TrendingUpOutlinedIcon from "@mui/icons-material/TrendingUpOutlined";
 import PaidOutlinedIcon from "@mui/icons-material/PaidOutlined";
@@ -57,7 +57,6 @@ const NAV_SECTIONS = [
       { label: "Overview", to: "/", icon: DashboardOutlinedIcon, exact: true },
       { label: "Mukkadams", to: "/mukkadams", icon: Groups2OutlinedIcon },
       { label: "Insights", to: "/mukkadams/insights", icon: InsightsOutlinedIcon },
-      // { label: "Payments", to: "/payments", icon: PaymentsOutlinedIcon },
     ],
   },
   {
@@ -66,6 +65,7 @@ const NAV_SECTIONS = [
       { label: "Coverage Warnings", to: "/coverage-warnings", icon: WarningAmberOutlinedIcon },
       { label: "Revenue & Profitability", to: "/revenue-profitability", icon: TrendingUpOutlinedIcon, managerOnly: true },
       { label: "Mukkadam Earnings", to: "/mukkadam-earnings", icon: PaidOutlinedIcon, managerOnly: true },
+      { label: "Mukkadam Payments", to: "/mukkadam-payments", icon: PaymentsOutlinedIcon, managerOnly: true },
     ],
   },
   {
