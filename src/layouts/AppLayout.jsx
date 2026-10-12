@@ -29,6 +29,7 @@ import {
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import Groups2OutlinedIcon from "@mui/icons-material/Groups2Outlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
+import AgricultureOutlinedIcon from "@mui/icons-material/AgricultureOutlined";
 import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import TrendingUpOutlinedIcon from "@mui/icons-material/TrendingUpOutlined";
@@ -57,6 +58,7 @@ const NAV_SECTIONS = [
       { label: "Overview", to: "/", icon: DashboardOutlinedIcon, exact: true },
       { label: "Mukkadams", to: "/mukkadams", icon: Groups2OutlinedIcon },
       { label: "Insights", to: "/mukkadams/insights", icon: InsightsOutlinedIcon },
+      { label: "Farmer Plot Activities", to: "/mukkadams/farmer-plot-activities", icon: AgricultureOutlinedIcon },
     ],
   },
   {
