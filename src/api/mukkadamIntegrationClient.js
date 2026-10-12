@@ -118,37 +118,6 @@ function buildTrendQuery({ dateFrom, dateTo, granularity, mukkadamId } = {}) {
   return qs ? `?${qs}` : "";
 }
 
-// §18 — note the endpoint path itself has NO trailing slash (unlike every
-// other endpoint in this client) and `farmer_id`/`plot_id` are applied but
-// deliberately not echoed back in the response's `filters` block — both
-// confirmed against the live API, not just the doc.
-function buildFarmerPlotActivitiesQuery({
-  status,
-  activityId,
-  farmerName,
-  farmerId,
-  plotId,
-  seasonCode,
-  dateFrom,
-  dateTo,
-  page,
-  pageSize,
-} = {}) {
-  const params = new URLSearchParams();
-  if (status) params.set("status", status);
-  if (activityId !== undefined && activityId !== null && activityId !== "") params.set("activity_id", String(activityId));
-  if (farmerName) params.set("farmer_name", farmerName);
-  if (farmerId) params.set("farmer_id", farmerId);
-  if (plotId !== undefined && plotId !== null && plotId !== "") params.set("plot_id", String(plotId));
-  if (seasonCode) params.set("season_code", seasonCode);
-  if (dateFrom) params.set("date_from", dateFrom);
-  if (dateTo) params.set("date_to", dateTo);
-  if (page) params.set("page", String(page));
-  if (pageSize) params.set("page_size", String(pageSize));
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
-}
-
 function buildLeaderboardQuery({ dateFrom, dateTo, metric, limit, workStatus } = {}) {
   const params = new URLSearchParams();
   if (dateFrom) params.set("date_from", dateFrom);
@@ -260,17 +229,6 @@ export const mukkadamIntegrationApi = {
         ...(reason ? { reason } : {}),
         ...(amId ? { am_id: amId } : {}),
       },
-    }),
-
-  // Paginated, filterable job-activity listing, one row per
-  // api_activity_id (the original allocation plus any carry-forward
-  // splits grouped together) — reference doc §18. filters: { status,
-  // activityId, farmerName, farmerId, plotId, seasonCode, dateFrom,
-  // dateTo, page, pageSize }. page_size caps at 50 (not just this one
-  // default — the server clamps any larger value down to it).
-  getFarmerPlotActivitiesReport: (filters, signal) =>
-    request(`/tender/api/integration/farmers-plot-activities-report${buildFarmerPlotActivitiesQuery(filters)}`, {
-      signal,
     }),
 
   // Mukkadam earned vs. withdrawn, current season only (reference doc

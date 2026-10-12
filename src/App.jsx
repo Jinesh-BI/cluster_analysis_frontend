@@ -11,7 +11,6 @@ import ManagersPage from "./pages/ManagersPage";
 import MukkadamsListPage from "./pages/mukkadams/MukkadamsListPage";
 import MukkadamDetailPage from "./pages/mukkadams/MukkadamDetailPage";
 import AllocationsInsightsPage from "./pages/mukkadams/AllocationsInsightsPage";
-import FarmerPlotActivitiesPage from "./pages/mukkadams/FarmerPlotActivitiesPage";
 import PaymentsPage from "./pages/PaymentsPage";
 import CoverageWarningsPage from "./pages/CoverageWarningsPage";
 import RevenueProfitabilityPage from "./pages/RevenueProfitabilityPage";
@@ -47,7 +46,6 @@ export default function App() {
             <Route path="/" element={<OverviewPage />} />
             <Route path="/mukkadams" element={<MukkadamsListPage />} />
             <Route path="/mukkadams/insights" element={<AllocationsInsightsPage />} />
-            <Route path="/mukkadams/farmer-plot-activities" element={<FarmerPlotActivitiesPage />} />
             <Route path="/mukkadams/:id" element={<MukkadamDetailPage />} />
             <Route
               path="/mukkadam-payments"
